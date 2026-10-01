@@ -200,7 +200,7 @@ export const ProductsPage: React.FC = () => {
                 <SelectItem value="newest">Newest Arrival</SelectItem>
                 <SelectItem value="price_asc">Price (Low to High)</SelectItem>
                 <SelectItem value="price_desc">Price (High to Low)</SelectItem>
-                <SelectItem value="margin_desc">Highest Margin ($)</SelectItem>
+                <SelectItem value="margin_desc">Highest Margin (₹)</SelectItem>
                 <SelectItem value="name_asc">Product Title (A-Z)</SelectItem>
               </SelectContent>
             </Select>

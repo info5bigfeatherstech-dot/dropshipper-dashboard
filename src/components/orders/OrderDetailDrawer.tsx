@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Order } from '../../types';
 import { Drawer } from '../common/Drawer';
 import { StatusBadge } from '../common/StatusBadge';
@@ -34,7 +34,7 @@ interface OrderDetailDrawerProps {
 }
 
 export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
-  order,
+  order: propOrder,
   isOpen,
   onClose
 }) => {
@@ -42,6 +42,12 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [isZoomingImage, setIsZoomingImage] = useState(false);
 
+  // Retain last order in ref so the Drawer can play its smooth slide-out exit animation
+  const lastOrderRef = useRef<Order | null>(propOrder);
+  if (propOrder) {
+    lastOrderRef.current = propOrder;
+  }
+  const order = propOrder || lastOrderRef.current;
   if (!order) return null;
 
   const handleCopyOrderNumber = () => {
@@ -130,7 +136,7 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
 
   return (
     <Drawer
-      isOpen={isOpen}
+      isOpen={isOpen && Boolean(propOrder)}
       onClose={onClose}
       title={`Order ${order.orderNumber}`}
       subtitle={`Submitted on ${formatDateTime(order.createdAt)}`}
@@ -250,10 +256,10 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
         </div>
 
         {/* Product Details Card with Image Preview and Zoom */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-soft">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-soft space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Ordered Product
+              Ordered Products ({(order.items && order.items.length > 0 ? order.items : [order.item]).length})
             </h4>
             <div className="flex items-center gap-2">
               <button
@@ -266,56 +272,74 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            {/* Thumbnail with zoom trigger */}
-            <div
-              onClick={() => setIsZoomingImage(!isZoomingImage)}
-              className="relative w-24 h-24 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer group shrink-0"
-              title="Click to zoom image"
-            >
-              <img
-                src={order.item.image}
-                alt={order.item.productName}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-              />
-              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                <ZoomIn className="w-5 h-5" />
-              </div>
-            </div>
+          <div className="space-y-3">
+            {(order.items && order.items.length > 0 ? order.items : [order.item]).map((it, idx) => (
+              <div
+                key={idx}
+                className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60"
+              >
+                {/* Thumbnail with zoom trigger */}
+                <div
+                  onClick={() => setIsZoomingImage(!isZoomingImage)}
+                  className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer group shrink-0"
+                  title="Click to zoom image"
+                >
+                  <img
+                    src={it.image}
+                    alt={it.productName}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                    <ZoomIn className="w-4 h-4" />
+                  </div>
+                </div>
 
-            {/* Product Meta */}
-            <div className="flex-1 min-w-0">
-              <span className="text-xs font-mono text-slate-400">{order.item.sku}</span>
-              <h5 className="text-base font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
-                {order.item.productName}
-              </h5>
-              <div className="flex items-center gap-4 mt-2 text-xs text-slate-600 dark:text-slate-300">
-                <span>
-                  Dropship Price:{' '}
-                  <strong className="text-slate-900 dark:text-white">
-                    {formatCurrency(order.item.dropshipPrice)}
-                  </strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Quantity:{' '}
-                  <strong className="text-slate-900 dark:text-white">
-                    {order.item.quantity}
-                  </strong>
-                </span>
-              </div>
-            </div>
+                {/* Product Meta */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-mono text-slate-400">{it.sku}</span>
+                  <h5 className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
+                    {it.productName}
+                  </h5>
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    <span>
+                      Dropship Price:{' '}
+                      <strong className="text-slate-900 dark:text-white">
+                        {formatCurrency(it.dropshipPrice)}
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      Qty:{' '}
+                      <strong className="text-slate-900 dark:text-white">
+                        {it.quantity}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
 
-            {/* Total */}
-            <div className="text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 w-full sm:w-auto">
-              <span className="text-[11px] font-medium text-slate-400 uppercase">
-                Line Total
-              </span>
-              <p className="text-xl font-extrabold text-brand-600 dark:text-brand-400">
-                {formatCurrency(order.item.total)}
-              </p>
-            </div>
+                {/* Total */}
+                <div className="text-left sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 w-full sm:w-auto">
+                  <span className="text-[10px] font-medium text-slate-400 uppercase">
+                    Line Total
+                  </span>
+                  <p className="text-base font-extrabold text-brand-600 dark:text-brand-400">
+                    {formatCurrency(it.total)}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
+
+          {(order.items && order.items.length > 1) && (
+            <div className="flex justify-between items-center pt-3 px-1 text-sm font-bold text-slate-900 dark:text-white border-t border-slate-100 dark:border-slate-800">
+              <span className="text-slate-500 font-medium">
+                Items Subtotal ({order.items.reduce((acc, i) => acc + i.quantity, 0)} units):
+              </span>
+              <span className="text-base text-brand-600 dark:text-brand-400 font-black">
+                {formatCurrency(order.items.reduce((acc, i) => acc + i.total, 0))}
+              </span>
+            </div>
+          )}
 
           {/* Expanded Image Zoom Modal / Box */}
           {isZoomingImage && (

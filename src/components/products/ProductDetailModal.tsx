@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Product } from '../../types';
 import { Drawer } from '../common/Drawer';
 import { StockBadge } from '../common/StatusBadge';
@@ -21,13 +21,19 @@ interface ProductDetailModalProps {
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
-  product,
+  product: propProduct,
   isOpen,
   onClose,
   onCreateOrder
 }) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
+  // Retain last product in ref so the Drawer can play its smooth slide-out exit animation
+  const lastProductRef = useRef<Product | null>(propProduct);
+  if (propProduct) {
+    lastProductRef.current = propProduct;
+  }
+  const product = propProduct || lastProductRef.current;
   if (!product) return null;
 
   const { profit, percentage } = calculateMargin(
@@ -45,7 +51,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   return (
     <Drawer
-      isOpen={isOpen}
+      isOpen={isOpen && Boolean(propProduct)}
       onClose={onClose}
       title={product.name}
       subtitle={`SKU: ${product.sku} • Sourced from ${product.specs.origin}`}

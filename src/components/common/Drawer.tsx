@@ -34,29 +34,31 @@ export const Drawer: React.FC<DrawerProps> = ({
   }, [isOpen, onClose]);
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {isOpen && (
         <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
-          {/* Backdrop */}
+          {/* Backdrop: Clean high-performance opacity overlay without CPU-heavy backdrop-blur */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
             onClick={onClose}
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-slate-950/50 cursor-pointer will-change-[opacity]"
+            aria-hidden="true"
           />
 
-          {/* Drawer Slide Panel */}
+          {/* Drawer Slide Panel: GPU-accelerated cubic-bezier transform */}
           <motion.div
             initial={{ x: '100%' }}
-            animate={{ x: 0 }}
+            animate={{ x: '0%' }}
             exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className={`relative w-full ${width} bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800`}
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            className={`relative w-full ${width} bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 border-l border-slate-200 dark:border-slate-800 transform-gpu will-change-transform`}
+            style={{ contain: 'paint' }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <div>
                 {title && (
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -78,8 +80,8 @@ export const Drawer: React.FC<DrawerProps> = ({
               </button>
             </div>
 
-            {/* Scrollable Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            {/* Scrollable Body with smooth inertial scrolling */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-6 space-y-6">
               {children}
             </div>
           </motion.div>
@@ -88,3 +90,4 @@ export const Drawer: React.FC<DrawerProps> = ({
     </AnimatePresence>
   );
 };
+

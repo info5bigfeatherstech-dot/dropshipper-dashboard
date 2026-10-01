@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -11,20 +11,28 @@ import { Product } from '../../types';
 
 export const Layout: React.FC = () => {
   const navigate = useNavigate();
-  const {
-    selectedProductForModal,
-    setSelectedProductForModal,
-    selectedOrderForDetail,
-    setSelectedOrderForDetail,
-    setSelectedProductForCreate,
-    setActiveOrderTab
-  } = useStore();
 
-  const handleCreateOrderFromProduct = (product: Product) => {
+  // Fine-grained selectors prevent full Layout re-renders on arbitrary store changes
+  const selectedProductForModal = useStore((state) => state.selectedProductForModal);
+  const setSelectedProductForModal = useStore((state) => state.setSelectedProductForModal);
+  const selectedOrderForDetail = useStore((state) => state.selectedOrderForDetail);
+  const setSelectedOrderForDetail = useStore((state) => state.setSelectedOrderForDetail);
+  const setSelectedProductForCreate = useStore((state) => state.setSelectedProductForCreate);
+  const setActiveOrderTab = useStore((state) => state.setActiveOrderTab);
+
+  const handleCreateOrderFromProduct = useCallback((product: Product) => {
     setSelectedProductForCreate(product);
     setActiveOrderTab('create');
     navigate('/orders/create');
-  };
+  }, [setSelectedProductForCreate, setActiveOrderTab, navigate]);
+
+  const handleCloseProductModal = useCallback(() => {
+    setSelectedProductForModal(null);
+  }, [setSelectedProductForModal]);
+
+  const handleCloseOrderDetail = useCallback(() => {
+    setSelectedOrderForDetail(null);
+  }, [setSelectedOrderForDetail]);
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
@@ -54,7 +62,7 @@ export const Layout: React.FC = () => {
       <ProductDetailModal
         product={selectedProductForModal}
         isOpen={Boolean(selectedProductForModal)}
-        onClose={() => setSelectedProductForModal(null)}
+        onClose={handleCloseProductModal}
         onCreateOrder={handleCreateOrderFromProduct}
       />
 
@@ -62,7 +70,7 @@ export const Layout: React.FC = () => {
       <OrderDetailDrawer
         order={selectedOrderForDetail}
         isOpen={Boolean(selectedOrderForDetail)}
-        onClose={() => setSelectedOrderForDetail(null)}
+        onClose={handleCloseOrderDetail}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Order, Product, OrderStatus, ToastMessage } from '../types';
+import { Order, OrderItem, Product, OrderStatus, ToastMessage } from '../types';
 import { mockProducts } from '../data/mockProducts';
 import { mockOrders } from '../data/mockOrders';
 
@@ -46,8 +46,9 @@ interface StoreState {
 
   // Order Operations
   createOrder: (orderData: {
-    product: Product;
-    quantity: number;
+    product?: Product;
+    quantity?: number;
+    items?: { product: Product; quantity: number }[];
     customer: { name: string; email: string; phone: string };
     shippingAddress: {
       line1: string;
@@ -151,23 +152,49 @@ export const useStore = create<StoreState>((set, get) => {
       const randomDigits = Math.floor(10000 + Math.random() * 90000);
       const orderNumber = `ORD-${randomDigits}`;
       const now = new Date().toISOString();
-      const unitPrice = orderData.product.dropshipPrice;
-      const total = +(unitPrice * orderData.quantity).toFixed(2);
+
+      // Resolve items array (either provided as items list or single product)
+      const orderItemsList: OrderItem[] = (orderData.items && orderData.items.length > 0)
+        ? orderData.items.map((it) => ({
+            productId: it.product.id,
+            productName: it.product.name,
+            sku: it.product.sku,
+            image: it.product.thumbnail,
+            dropshipPrice: it.product.dropshipPrice,
+            quantity: it.quantity,
+            total: +(it.product.dropshipPrice * it.quantity).toFixed(2)
+          }))
+        : orderData.product
+        ? [
+            {
+              productId: orderData.product.id,
+              productName: orderData.product.name,
+              sku: orderData.product.sku,
+              image: orderData.product.thumbnail,
+              dropshipPrice: orderData.product.dropshipPrice,
+              quantity: orderData.quantity || 1,
+              total: +(orderData.product.dropshipPrice * (orderData.quantity || 1)).toFixed(2)
+            }
+          ]
+        : [];
+
+      const primaryItem = orderItemsList[0] || {
+        productId: 'prod-unknown',
+        productName: 'Custom Product',
+        sku: 'SKU-CUSTOM',
+        image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
+        dropshipPrice: 0,
+        quantity: 1,
+        total: 0
+      };
 
       const newOrder: Order = {
         id: 'ord-' + Date.now(),
         orderNumber,
         customer: orderData.customer,
         shippingAddress: orderData.shippingAddress,
-        item: {
-          productId: orderData.product.id,
-          productName: orderData.product.name,
-          sku: orderData.product.sku,
-          image: orderData.product.thumbnail,
-          dropshipPrice: unitPrice,
-          quantity: orderData.quantity,
-          total
-        },
+        item: primaryItem,
+        items: orderItemsList,
         status: 'pending',
         notes: orderData.notes,
         createdAt: now,
@@ -193,12 +220,16 @@ export const useStore = create<StoreState>((set, get) => {
       }));
 
       // Add notification
+      const notifMsg = orderItemsList.length > 1
+        ? `Awaiting admin approval for ${orderItemsList.length} products (${orderNumber}).`
+        : `Awaiting admin approval for ${primaryItem.productName}.`;
+
       set((state) => ({
         notifications: [
           {
             id: 'notif-' + Date.now(),
             title: `Order Submitted (${orderNumber})`,
-            message: `Awaiting admin approval for ${orderData.product.name}.`,
+            message: notifMsg,
             time: 'Just now',
             read: false,
             type: 'order'

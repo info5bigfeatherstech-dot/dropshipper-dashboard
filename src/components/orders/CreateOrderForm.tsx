@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { Product } from '../../types';
@@ -43,9 +43,20 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Globe,
-  Clock
+  Clock,
+  Search,
+  Barcode,
+  Hash,
+  Trash2,
+  ShoppingBag,
+  PackageSearch
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+export interface SelectedOrderItem {
+  product: Product;
+  quantity: number;
+}
 
 interface FormErrors {
   product?: string;
@@ -59,6 +70,9 @@ interface FormErrors {
   country?: string;
 }
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const INDIAN_PHONE_REGEX = /^\+91\s?[6-9]\d{4}\s?\d{5}$/;
+
 export const CreateOrderForm: React.FC = () => {
   const navigate = useNavigate();
   const {
@@ -69,17 +83,22 @@ export const CreateOrderForm: React.FC = () => {
     addToast
   } = useStore();
 
-  // Form state
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(
-    selectedProductForCreate || products[0] || null
-  );
-  const [quantity, setQuantity] = useState(1);
+  // Multi-product order state
+  const [orderItems, setOrderItems] = useState<SelectedOrderItem[]>(() => {
+    const initial = selectedProductForCreate || (products.length > 0 ? products[0] : null);
+    return initial ? [{ product: initial, quantity: 1 }] : [];
+  });
+
+  // Product search & SKU input state
+  const [searchNameQuery, setSearchNameQuery] = useState('');
+  const [productCodeQuery, setProductCodeQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Customer state
-  const [salutation, setSalutation] = useState('Ms.');
   const [customerName, setCustomerName] = useState('Sarah Jenkins');
   const [customerEmail, setCustomerEmail] = useState('sarah.jenkins@example.com');
-  const [customerPhone, setCustomerPhone] = useState('+1 (555) 349-8821');
+  const [customerPhone, setCustomerPhone] = useState('+91 98765 43210');
 
   // Address state
   const [line1, setLine1] = useState('452 Market Street');
@@ -88,11 +107,6 @@ export const CreateOrderForm: React.FC = () => {
   const [state, setState] = useState('CA');
   const [postalCode, setPostalCode] = useState('94105');
   const [country, setCountry] = useState('United States');
-
-  // Shipping & Fulfillment state (using shadcn Select dropdowns)
-  const [shippingMethod, setShippingMethod] = useState<'standard' | 'express' | 'overnight'>('standard');
-  const [warehouseHub, setWarehouseHub] = useState('us-west');
-  const [priorityTier, setPriorityTier] = useState('normal');
 
   const [notes, setNotes] = useState('Handle with care. Leave at package locker if unavailable.');
 
@@ -103,36 +117,177 @@ export const CreateOrderForm: React.FC = () => {
   // Sync if pre-selected product changes from store
   useEffect(() => {
     if (selectedProductForCreate) {
-      setSelectedProduct(selectedProductForCreate);
+      setOrderItems((prev) => {
+        const exists = prev.some((it) => it.product.id === selectedProductForCreate.id);
+        if (exists) return prev;
+        return [...prev, { product: selectedProductForCreate, quantity: 1 }];
+      });
     }
   }, [selectedProductForCreate]);
 
-  // Shipping cost mapping
-  const shippingFees = {
-    standard: 0.00,
-    express: 4.99,
-    overnight: 9.99
+  // Close search suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+
+  // Filter products by Name or Product Code (SKU)
+  const filteredProducts = useMemo(() => {
+    const nameQ = searchNameQuery.trim().toLowerCase();
+    const codeQ = productCodeQuery.trim().toLowerCase();
+
+    return products.filter((p) => {
+      const matchesName =
+        !nameQ ||
+        p.name.toLowerCase().includes(nameQ) ||
+        p.category.toLowerCase().includes(nameQ) ||
+        p.tags.some((t) => t.toLowerCase().includes(nameQ));
+
+      const matchesCode =
+        !codeQ || p.sku.toLowerCase().includes(codeQ);
+
+      return matchesName && matchesCode;
+    });
+  }, [products, searchNameQuery, productCodeQuery]);
+
+  // Product selection & cart handlers
+  const handleAddProduct = (product: Product, qty: number = 1) => {
+    if (product.stockStatus === 'out_of_stock') {
+      addToast({
+        type: 'warning',
+        title: 'Product Out of Stock',
+        message: `${product.name} is currently out of stock.`
+      });
+      return;
+    }
+
+    setOrderItems((prev) => {
+      const idx = prev.findIndex((it) => it.product.id === product.id);
+      if (idx > -1) {
+        const updated = [...prev];
+        const maxStock = product.stock || 99;
+        const newQty = Math.min(maxStock, updated[idx].quantity + qty);
+        updated[idx] = { ...updated[idx], quantity: newQty };
+        addToast({
+          type: 'info',
+          title: 'Quantity Updated',
+          message: `Increased quantity for ${product.name} to ${newQty}.`
+        });
+        return updated;
+      }
+
+      addToast({
+        type: 'success',
+        title: 'Product Added to Order',
+        message: `${product.name} (${product.sku}) added.`
+      });
+      return [...prev, { product, quantity: qty }];
+    });
+
+    setSearchNameQuery('');
+    setProductCodeQuery('');
+    setIsSearchOpen(false);
+    if (errors.product) {
+      setErrors((prev) => ({ ...prev, product: undefined }));
+    }
+  };
+
+  const handleManualAdd = () => {
+    if (filteredProducts.length > 0) {
+      handleAddProduct(filteredProducts[0], 1);
+    } else {
+      const term = searchNameQuery.trim() || productCodeQuery.trim();
+      addToast({
+        type: 'warning',
+        title: 'No Matching Product',
+        message: term
+          ? `Could not find any catalog item matching "${term}".`
+          : 'Please enter a product name or SKU code to search.'
+      });
+    }
+  };
+
+  const handleUpdateQuantity = (productId: string, delta: number) => {
+    setOrderItems((prev) => {
+      const target = prev.find((item) => item.product.id === productId);
+      if (!target) return prev;
+
+      const newQty = target.quantity + delta;
+      if (newQty <= 0) {
+        addToast({
+          type: 'info',
+          title: 'Product Removed',
+          message: `${target.product.name} removed from order.`
+        });
+        return prev.filter((item) => item.product.id !== productId);
+      }
+
+      const maxStock = target.product.stock || 99;
+      return prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, quantity: Math.min(maxStock, newQty) }
+          : item
+      );
+    });
+  };
+
+  const handleRemoveItem = (productId: string) => {
+    setOrderItems((prev) => prev.filter((item) => item.product.id !== productId));
+    addToast({
+      type: 'info',
+      title: 'Item Removed',
+      message: 'Product removed from this order.'
+    });
   };
 
   const validate = (): boolean => {
     const errs: FormErrors = {};
 
-    if (!selectedProduct) {
-      errs.product = 'Please select a valid in-stock product.';
+    if (orderItems.length === 0) {
+      errs.product = 'Please add at least one product to the order.';
     }
 
-    if (!customerName.trim()) {
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
       errs.customerName = 'Customer full name is required.';
+    } else {
+      const words = trimmedName.split(/\s+/).filter(Boolean);
+      if (words.length < 2) {
+        errs.customerName = 'Please enter at least First Name and Last Name (Middle Name is optional).';
+      } else if (trimmedName.length > 50) {
+        errs.customerName = `Full name cannot exceed 50 characters (currently ${trimmedName.length} characters).`;
+      } else if (words.length > 50) {
+        errs.customerName = 'Full name cannot exceed 50 words.';
+      } else if (!/^[a-zA-Z\s.'-]+$/.test(trimmedName)) {
+        errs.customerName = 'Full name can only contain letters, spaces, hyphens, and periods.';
+      }
     }
 
-    if (!customerEmail.trim()) {
+    const trimmedEmail = customerEmail.trim();
+    if (!trimmedEmail) {
       errs.customerEmail = 'Customer email address is required.';
-    } else if (!/\S+@\S+\.\S+/.test(customerEmail)) {
-      errs.customerEmail = 'Please enter a valid email address.';
+    } else if (!EMAIL_REGEX.test(trimmedEmail)) {
+      errs.customerEmail = 'Please enter a valid email address (e.g. name@example.com).';
     }
 
-    if (!customerPhone.trim()) {
-      errs.customerPhone = 'Contact phone number is required.';
+    const trimmedPhone = customerPhone.trim();
+    const phoneDigits = trimmedPhone.replace(/[^\d]/g, '');
+    const localDigits = phoneDigits.startsWith('91') && phoneDigits.length === 12
+      ? phoneDigits.slice(2)
+      : phoneDigits;
+
+    if (!trimmedPhone || localDigits.length === 0) {
+      errs.customerPhone = 'Indian mobile phone number is required.';
+    } else if (localDigits.length !== 10) {
+      errs.customerPhone = 'Indian mobile number must be exactly 10 digits (+91).';
+    } else if (!/^[6-9]/.test(localDigits)) {
+      errs.customerPhone = 'Indian mobile number must start with 6, 7, 8, or 9.';
     }
 
     if (!line1.trim()) {
@@ -178,10 +333,9 @@ export const CreateOrderForm: React.FC = () => {
 
     const newOrder = createOrder(
       {
-        product: selectedProduct!,
-        quantity,
+        items: orderItems,
         customer: {
-          name: `${salutation} ${customerName.trim()}`,
+          name: customerName.trim(),
           email: customerEmail.trim(),
           phone: customerPhone.trim()
         },
@@ -193,9 +347,7 @@ export const CreateOrderForm: React.FC = () => {
           postalCode: postalCode.trim(),
           country: country.trim()
         },
-        notes: notes.trim()
-          ? `${notes.trim()} [Method: ${shippingMethod.toUpperCase()}, Hub: ${warehouseHub.toUpperCase()}, Priority: ${priorityTier.toUpperCase()}]`
-          : undefined
+        notes: notes.trim() || undefined
       },
       isDraft
     );
@@ -231,7 +383,9 @@ export const CreateOrderForm: React.FC = () => {
   const handleResetForm = () => {
     setSubmittedOrder(null);
     setSelectedProductForCreate(null);
-    setQuantity(1);
+    setOrderItems(products.length > 0 ? [{ product: products[0], quantity: 1 }] : []);
+    setSearchNameQuery('');
+    setProductCodeQuery('');
     setCustomerName('');
     setCustomerEmail('');
     setCustomerPhone('');
@@ -241,52 +395,41 @@ export const CreateOrderForm: React.FC = () => {
     setState('');
     setPostalCode('');
     setNotes('');
+    setErrors({});
   };
 
   // Quick Template Fillers
   const fillSampleTemplate = (type: 'us' | 'ca' | 'uk') => {
     if (type === 'us') {
-      setSalutation('Ms.');
       setCustomerName('Sarah Jenkins');
       setCustomerEmail('sarah.jenkins@example.com');
-      setCustomerPhone('+1 (555) 349-8821');
+      setCustomerPhone('+91 98765 43210');
       setLine1('452 Market Street');
       setLine2('Apt 12C');
       setCity('San Francisco');
       setState('CA');
       setPostalCode('94105');
       setCountry('United States');
-      setShippingMethod('standard');
-      setWarehouseHub('us-west');
-      setPriorityTier('normal');
     } else if (type === 'ca') {
-      setSalutation('Mr.');
       setCustomerName('Liam Vance');
       setCustomerEmail('liam.vance@vancetech.ca');
-      setCustomerPhone('+1 (416) 555-0199');
+      setCustomerPhone('+91 98201 54321');
       setLine1('100 King Street West');
       setLine2('Suite 2400');
       setCity('Toronto');
       setState('ON');
       setPostalCode('M5X 1A9');
       setCountry('Canada');
-      setShippingMethod('express');
-      setWarehouseHub('us-east');
-      setPriorityTier('urgent');
     } else if (type === 'uk') {
-      setSalutation('Dr.');
-      setCustomerName('Emma Watson');
-      setCustomerEmail('emma.watson@oxfordalumni.org');
-      setCustomerPhone('+44 20 7946 0912');
-      setLine1('221B Baker Street');
-      setLine2('Flat 2');
+      setCustomerName('Oliver Sterling');
+      setCustomerEmail('oliver.sterling@harbor.co.uk');
+      setCustomerPhone('+91 97123 45678');
+      setLine1('88 Leadenhall Street');
+      setLine2('Floor 14');
       setCity('London');
       setState('Greater London');
-      setPostalCode('NW1 6XE');
+      setPostalCode('EC3A 3BP');
       setCountry('United Kingdom');
-      setShippingMethod('express');
-      setWarehouseHub('eu-central');
-      setPriorityTier('normal');
     }
     addToast({
       type: 'info',
@@ -296,12 +439,14 @@ export const CreateOrderForm: React.FC = () => {
   };
 
   // Calculations for live order summary
-  const unitDropshipPrice = selectedProduct?.dropshipPrice || 0;
-  const unitMSRP = selectedProduct?.suggestedRetailPrice || 0;
-  const productSubtotal = +(unitDropshipPrice * quantity).toFixed(2);
-  const shippingFee = shippingFees[shippingMethod];
-  const totalCost = +(productSubtotal + shippingFee).toFixed(2);
-  const estimatedRevenue = +(unitMSRP * quantity).toFixed(2);
+  const totalQuantity = orderItems.reduce((acc, it) => acc + it.quantity, 0);
+  const productSubtotal = +orderItems
+    .reduce((acc, it) => acc + it.product.dropshipPrice * it.quantity, 0)
+    .toFixed(2);
+  const totalCost = productSubtotal;
+  const estimatedRevenue = +orderItems
+    .reduce((acc, it) => acc + it.product.suggestedRetailPrice * it.quantity, 0)
+    .toFixed(2);
   const estimatedProfit = Math.max(0, +(estimatedRevenue - totalCost).toFixed(2));
 
   // If submitted, show clean Confirmation Screen
@@ -321,8 +466,30 @@ export const CreateOrderForm: React.FC = () => {
         </h3>
 
         <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed mb-6">
-          Order <strong className="text-slate-900 font-mono">{submittedOrder.orderNumber}</strong> has been forwarded to the supplier dispatch queue and is waiting for admin approval.
+          Order <strong className="text-slate-900 font-mono">{submittedOrder.orderNumber}</strong> has been forwarded to the supplier dispatch queue with {totalQuantity} item(s) and is waiting for admin approval.
         </p>
+
+        {/* Ordered items preview in confirmation */}
+        <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-4 mb-6 text-left max-h-56 overflow-y-auto space-y-2">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            Dispatched Products ({orderItems.length})
+          </p>
+          {orderItems.map((item) => (
+            <div key={item.product.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-200/50 last:border-b-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img src={item.product.thumbnail} alt="" className="w-8 h-8 rounded-lg object-cover border border-slate-200" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-800 truncate">{item.product.name}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{item.product.sku}</p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="font-bold text-slate-900">{item.quantity} × {formatCurrency(item.product.dropshipPrice)}</span>
+                <span className="block text-[11px] font-semibold text-brand-600">{formatCurrency(item.product.dropshipPrice * item.quantity)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Demo Auto-Admin Notice */}
         <div className="bg-brand-50/60 border border-brand-200/80 rounded-2xl p-4 text-xs text-brand-800 max-w-md mx-auto mb-8 flex items-start gap-3 text-left">
@@ -359,63 +526,10 @@ export const CreateOrderForm: React.FC = () => {
 
   return (
     <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-6">
-      {/* Top Banner highlighting shadcn components */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-brand-50/80 via-white to-indigo-50/50 border border-brand-200/70 rounded-2xl shadow-xs">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-brand-600 animate-ping" />
-          <span className="text-xs font-bold text-brand-900">
-            shadcn/ui Form & Dropdown System
-          </span>
-          <div className="hidden sm:flex items-center gap-1.5 ml-2">
-            <Badge variant="outline" className="text-[10px] bg-white border-brand-200 text-brand-700 font-medium">
-              shadcn Select
-            </Badge>
-            <Badge variant="outline" className="text-[10px] bg-white border-brand-200 text-brand-700 font-medium">
-              shadcn FormItem
-            </Badge>
-            <Badge variant="outline" className="text-[10px] bg-white border-brand-200 text-brand-700 font-medium">
-              shadcn DropdownMenu
-            </Badge>
-          </div>
-        </div>
-
-        {/* Quick Template DropdownMenu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" type="button" className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
-              <span>⚡ Quick Templates</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 shadow-soft-lg">
-            <DropdownMenuLabel>Auto-Fill Test Customer</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => fillSampleTemplate('us')}>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-              <span>United States (San Francisco)</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => fillSampleTemplate('ca')}>
-              <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
-              <span>Canada (Toronto, ON)</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => fillSampleTemplate('uk')}>
-              <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-              <span>United Kingdom (London)</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleResetForm} className="text-rose-600 focus:text-rose-700">
-              <RotateCcw className="w-3.5 h-3.5 mr-2" />
-              <span>Reset All Fields</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left 2 Columns: Form Sections */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Section 1: Product Selection using shadcn Select */}
+          {/* Section 1: Product Selection & Multi-Product Cart */}
           <Card className="p-5 sm:p-6 shadow-soft">
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -424,121 +538,346 @@ export const CreateOrderForm: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Product Selection & Units
+                    Products in Order
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Select catalog item to dispatch to customer
+                    Search by product name or enter product code (SKU) to add multiple items
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="text-[10px] bg-slate-100 text-slate-600">
-                shadcn Select
-              </Badge>
+
+              {/* Quick Template Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" type="button" className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
+                    <span>⚡ Quick Templates</span>
+                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64 shadow-soft-lg">
+                  <DropdownMenuLabel>Auto-Fill Test Customer</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('us')}>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
+                    <span>United States (San Francisco)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('ca')}>
+                    <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
+                    <span>Canada (Toronto, ON)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('uk')}>
+                    <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
+                    <span>United Kingdom (London)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleResetForm} className="text-rose-600 focus:text-rose-700">
+                    <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                    <span>Reset All Fields</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
-            {/* Product Picker using shadcn Select */}
+            {/* Search by Product Name & Product Code Bar */}
             <div className="space-y-4">
-              <FormItem>
-                <FormLabel>Select Catalog Product *</FormLabel>
-                <FormControl>
-                  <Select
-                    value={selectedProduct?.id || ''}
-                    onValueChange={(val) => {
-                      const found = products.find((p) => p.id === val);
-                      if (found) setSelectedProduct(found);
-                    }}
-                  >
-                    <SelectTrigger className={`w-full ${errors.product ? 'border-rose-500' : ''}`}>
-                      <SelectValue placeholder="Choose a product to dropship..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-72">
-                      {products.map((p) => (
-                        <SelectItem
-                          key={p.id}
-                          value={p.id}
-                          disabled={p.stockStatus === 'out_of_stock'}
-                        >
-                          <div className="flex items-center justify-between w-full gap-4">
-                            <span className="font-medium text-slate-900 truncate">
-                              {p.name}
-                            </span>
-                            <span className="text-xs font-bold text-brand-600 shrink-0">
-                              {formatCurrency(p.dropshipPrice)}{' '}
-                              <span className="text-[11px] font-normal text-slate-400">
-                                ({p.stockStatus === 'out_of_stock' ? 'Out of stock' : `${p.stock} left`})
-                              </span>
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                {errors.product && (
-                  <FormMessage>
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>{errors.product}</span>
-                  </FormMessage>
-                )}
-              </FormItem>
-
-              {/* Selected Product Card Preview */}
-              {selectedProduct && (
-                <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-                  <img
-                    src={selectedProduct.thumbnail}
-                    alt={selectedProduct.name}
-                    className="w-16 h-16 rounded-xl object-cover shrink-0 border border-slate-200"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-mono text-slate-400">
-                      {selectedProduct.sku}
-                    </span>
-                    <h4 className="text-sm font-bold text-slate-900 truncate">
-                      {selectedProduct.name}
-                    </h4>
-                    <p className="text-xs text-brand-600 font-semibold mt-0.5">
-                      Dropship Cost: {formatCurrency(selectedProduct.dropshipPrice)}{' '}
-                      <span className="text-slate-400 font-normal">
-                        (MSRP: {formatCurrency(selectedProduct.suggestedRetailPrice)})
-                      </span>
-                    </p>
+              <div className="relative" ref={searchContainerRef}>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  {/* Product Name Search Bar */}
+                  <div className="sm:col-span-6 space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Search className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Product Name (Search Bar)</span>
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="Search product name (e.g. AeroPulse, Lumina...)"
+                        value={searchNameQuery}
+                        onChange={(e) => {
+                          setSearchNameQuery(e.target.value);
+                          setIsSearchOpen(true);
+                        }}
+                        onFocus={() => setIsSearchOpen(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleManualAdd();
+                          }
+                        }}
+                        className="pl-9 pr-3 text-xs sm:text-sm bg-white border-slate-200 focus:border-brand-500"
+                      />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
                   </div>
 
-                  {/* Quantity Stepper */}
-                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shrink-0">
+                  {/* Product Code / SKU Input */}
+                  <div className="sm:col-span-4 space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Barcode className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Product Code / SKU</span>
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="e.g. AP-ANC-BLK-01"
+                        value={productCodeQuery}
+                        onChange={(e) => {
+                          setProductCodeQuery(e.target.value);
+                          setIsSearchOpen(true);
+                        }}
+                        onFocus={() => setIsSearchOpen(true)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleManualAdd();
+                          }
+                        }}
+                        className="pl-9 pr-3 text-xs sm:text-sm font-mono bg-white border-slate-200 focus:border-brand-500 uppercase"
+                      />
+                      <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Add Product Button */}
+                  <div className="sm:col-span-2">
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="h-7 w-7 rounded-lg"
-                      title="Decrease quantity"
+                      onClick={handleManualAdd}
+                      className="w-full h-10 gap-1.5 font-bold shadow-soft"
                     >
-                      <Minus className="w-3.5 h-3.5" />
-                    </Button>
-                    <span className="w-8 text-center text-xs font-bold text-slate-900">
-                      {quantity}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        setQuantity(Math.min(selectedProduct.stock || 99, quantity + 1))
-                      }
-                      className="h-7 w-7 rounded-lg"
-                      title="Increase quantity"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
+                      <span>Add</span>
                     </Button>
                   </div>
                 </div>
+
+                {/* Live Autocomplete Suggestions Dropdown */}
+                {isSearchOpen && (searchNameQuery.trim() || productCodeQuery.trim()) && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-soft-xl overflow-hidden max-h-80 overflow-y-auto animate-in fade-in-50 zoom-in-95">
+                    <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                      <span>Matching Products ({filteredProducts.length})</span>
+                      <span className="text-[10px] text-slate-400">Click item or press Add</span>
+                    </div>
+
+                    {filteredProducts.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-400">
+                        <PackageSearch className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="font-semibold text-slate-600">No matching products found</p>
+                        <p className="mt-0.5 text-slate-400">Try searching with a different product name or SKU code</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {filteredProducts.map((p) => {
+                          const inCart = orderItems.find((it) => it.product.id === p.id);
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => handleAddProduct(p)}
+                              className="flex items-center justify-between gap-3 p-3 hover:bg-brand-50/50 cursor-pointer transition-colors group"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <img
+                                  src={p.thumbnail}
+                                  alt=""
+                                  className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-xs text-slate-900 group-hover:text-brand-600 truncate">
+                                      {p.name}
+                                    </span>
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                      {p.sku}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                                    <span className="font-bold text-brand-600">
+                                      {formatCurrency(p.dropshipPrice)}
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                      {p.stockStatus === 'out_of_stock' ? 'Out of stock' : `${p.stock} in stock`}
+                                    </span>
+                                    <span>•</span>
+                                    <span className="text-slate-400 capitalize">{p.category}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs font-semibold gap-1 shrink-0 border-slate-200 group-hover:border-brand-500 group-hover:bg-brand-600 group-hover:text-white transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddProduct(p);
+                                }}
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>{inCart ? `Add More (${inCart.quantity})` : 'Add'}</span>
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Quick-Pick Popular Catalog Chips */}
+              <div className="flex items-center gap-2 flex-wrap pt-1 text-xs text-slate-500">
+                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  Quick Add:
+                </span>
+                {products.slice(0, 4).map((p) => {
+                  const inOrder = orderItems.some((it) => it.product.id === p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleAddProduct(p)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                        inOrder
+                          ? 'bg-brand-50 text-brand-700 border-brand-200 font-semibold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-brand-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Plus className="w-3 h-3 text-brand-600" />
+                      <span className="truncate max-w-[140px]">{p.name}</span>
+                      <span className="font-mono text-[10px] text-slate-400">({p.sku.split('-')[0]})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {errors.product && (
+                <div className="flex items-center gap-1.5 text-rose-500 text-xs font-semibold mt-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errors.product}</span>
+                </div>
               )}
+
+              {/* Selected Products Cart List */}
+              <div className="pt-3 border-t border-slate-100 space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                    Products in this Order ({orderItems.length})
+                  </span>
+                  {orderItems.length > 0 && (
+                    <span className="font-semibold text-brand-600">
+                      {totalQuantity} {totalQuantity === 1 ? 'unit' : 'units'} total • {formatCurrency(productSubtotal)}
+                    </span>
+                  )}
+                </div>
+
+                {orderItems.length === 0 ? (
+                  <div className="py-8 px-4 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                    <ShoppingBag className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">No products added yet</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      Type a product name in the search bar or enter a product code (SKU) above to add multiple products to this order.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {orderItems.map((item) => (
+                      <div
+                        key={item.product.id}
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-slate-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <img
+                            src={item.product.thumbnail}
+                            alt={item.product.name}
+                            className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-200 bg-white"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500">
+                                {item.product.sku}
+                              </span>
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                {item.product.category}
+                              </span>
+                            </div>
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">
+                              {item.product.name}
+                            </h4>
+                            <p className="text-xs text-brand-600 font-semibold mt-0.5">
+                              Dropship: {formatCurrency(item.product.dropshipPrice)}{' '}
+                              <span className="text-slate-400 font-normal">
+                                (MSRP: {formatCurrency(item.product.suggestedRetailPrice)})
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Quantity controls + Total + Remove */}
+                        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
+                          {/* Stepper */}
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shrink-0">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleUpdateQuantity(item.product.id, -1)}
+                              className={`h-7 w-7 rounded-lg transition-colors ${
+                                item.quantity === 1
+                                  ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                              title={item.quantity === 1 ? 'Remove from order' : 'Decrease quantity'}
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </Button>
+                            <span className="w-8 text-center text-xs font-bold text-slate-900">
+                              {item.quantity}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleUpdateQuantity(item.product.id, 1)}
+                              className="h-7 w-7 rounded-lg"
+                              title="Increase quantity"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+
+                          {/* Line Total */}
+                          <div className="text-right min-w-[70px]">
+                            <span className="text-[9px] uppercase tracking-wider text-slate-400 block">Total</span>
+                            <span className="text-xs sm:text-sm font-bold text-slate-900">
+                              {formatCurrency(item.product.dropshipPrice * item.quantity)}
+                            </span>
+                          </div>
+
+                          {/* Remove Button */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveItem(item.product.id)}
+                            className="h-8 w-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 shrink-0"
+                            title="Remove from order"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
 
-          {/* Section 2: Customer Details using shadcn Form components & Select */}
+          {/* Section 2: Customer Details */}
           <Card className="p-5 sm:p-6 shadow-soft">
             <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -554,43 +893,39 @@ export const CreateOrderForm: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <Badge variant="secondary" className="text-[10px] bg-slate-100 text-slate-600">
-                shadcn Form
-              </Badge>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-              {/* Customer Salutation Dropdown (shadcn Select) */}
-              <FormItem className="sm:col-span-3">
-                <FormLabel>Title</FormLabel>
-                <FormControl>
-                  <Select value={salutation} onValueChange={setSalutation}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Title" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Ms.">Ms.</SelectItem>
-                      <SelectItem value="Mr.">Mr.</SelectItem>
-                      <SelectItem value="Dr.">Dr.</SelectItem>
-                      <SelectItem value="Mx.">Mx.</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-              </FormItem>
-
               {/* Full Name */}
-              <FormItem className="sm:col-span-9">
-                <FormLabel>Full Name *</FormLabel>
+              <FormItem className="sm:col-span-12">
+                <div className="flex items-center justify-between">
+                  <FormLabel>Full Name *</FormLabel>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {customerName.length}/50 chars • {customerName.trim() ? customerName.trim().split(/\s+/).filter(Boolean).length : 0} words
+                  </span>
+                </div>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. Jane Doe"
+                    maxLength={50}
+                    placeholder="First Name Middle Name Last Name (e.g. Sarah Marie Jenkins)"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      if (errors.customerName) {
+                        setErrors((prev) => ({ ...prev, customerName: undefined }));
+                      }
+                    }}
                     className={errors.customerName ? 'border-rose-500' : ''}
                   />
                 </FormControl>
-                {errors.customerName && <FormMessage>{errors.customerName}</FormMessage>}
+                {errors.customerName ? (
+                  <FormMessage>{errors.customerName}</FormMessage>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Enter full recipient name: First Name, optional Middle Name, and Last Name (up to 50 characters / words).
+                  </p>
+                )}
               </FormItem>
 
               {/* Email Address */}
@@ -599,9 +934,24 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="email"
-                    placeholder="jane.doe@example.com"
+                    placeholder="sarah.jenkins@example.com"
                     value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomerEmail(val);
+                      if (errors.customerEmail && EMAIL_REGEX.test(val.trim())) {
+                        setErrors((prev) => ({ ...prev, customerEmail: undefined }));
+                      }
+                    }}
+                    onBlur={() => {
+                      const val = customerEmail.trim();
+                      if (val && !EMAIL_REGEX.test(val)) {
+                        setErrors((prev) => ({
+                          ...prev,
+                          customerEmail: 'Please enter a valid email address (e.g. name@domain.com).'
+                        }));
+                      }
+                    }}
                     className={errors.customerEmail ? 'border-rose-500' : ''}
                   />
                 </FormControl>
@@ -610,49 +960,100 @@ export const CreateOrderForm: React.FC = () => {
 
               {/* Phone Number */}
               <FormItem className="sm:col-span-6">
-                <FormLabel>Phone Number *</FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>Phone Number *</FormLabel>
+                  <span className="text-[10px] text-brand-600 font-semibold flex items-center gap-1">
+                    <span>🇮🇳</span>
+                    <span>India (+91) only</span>
+                  </span>
+                </div>
                 <FormControl>
-                  <Input
-                    type="tel"
-                    placeholder="+1 (555) 000-0000"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className={errors.customerPhone ? 'border-rose-500' : ''}
-                  />
+                  <div className="relative flex items-center">
+                    <div className="absolute left-0 top-0 bottom-0 px-3 bg-slate-100 border-r border-slate-200 rounded-l-xl flex items-center gap-1.5 text-xs font-bold text-slate-700 select-none z-10">
+                      <span className="text-sm">🇮🇳</span>
+                      <span>+91</span>
+                    </div>
+                    <Input
+                      type="tel"
+                      placeholder="98765 43210"
+                      maxLength={11}
+                      value={(() => {
+                        let digits = customerPhone.replace(/[^\d]/g, '');
+                        if (digits.startsWith('91') && digits.length > 10) {
+                          digits = digits.slice(2);
+                        }
+                        digits = digits.slice(0, 10);
+                        if (digits.length > 5) {
+                          return `${digits.slice(0, 5)} ${digits.slice(5)}`;
+                        }
+                        return digits;
+                      })()}
+                      onChange={(e) => {
+                        let digits = e.target.value.replace(/[^\d]/g, '');
+                        if (digits.startsWith('91') && digits.length > 10) {
+                          digits = digits.slice(2);
+                        }
+                        digits = digits.slice(0, 10);
+                        let formatted = digits;
+                        if (digits.length > 5) {
+                          formatted = `${digits.slice(0, 5)} ${digits.slice(5)}`;
+                        }
+                        const fullVal = digits ? `+91 ${formatted}` : '';
+                        setCustomerPhone(fullVal);
+
+                        if (errors.customerPhone && digits.length === 10 && /^[6-9]/.test(digits)) {
+                          setErrors((prev) => ({ ...prev, customerPhone: undefined }));
+                        }
+                      }}
+                      onBlur={() => {
+                        const digits = customerPhone.replace(/[^\d]/g, '');
+                        const local = digits.startsWith('91') && digits.length === 12 ? digits.slice(2) : digits;
+                        if (local && (local.length !== 10 || !/^[6-9]/.test(local))) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            customerPhone: 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.'
+                          }));
+                        }
+                      }}
+                      className={`pl-20 text-xs sm:text-sm font-mono tracking-wide ${errors.customerPhone ? 'border-rose-500' : ''}`}
+                    />
+                  </div>
                 </FormControl>
-                {errors.customerPhone && <FormMessage>{errors.customerPhone}</FormMessage>}
+                {errors.customerPhone ? (
+                  <FormMessage>{errors.customerPhone}</FormMessage>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Enter 10-digit Indian mobile number starting with 6, 7, 8, or 9.
+                  </p>
+                )}
               </FormItem>
             </div>
           </Card>
 
-          {/* Section 3: Shipping Address with Country Select dropdown */}
+          {/* Section 3: Shipping Address */}
           <Card className="p-5 sm:p-6 shadow-soft">
-            <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-brand-600 flex items-center justify-center font-bold text-xs">
-                  3
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Shipping Address & Destination
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Full destination address with validated country routing
-                  </p>
-                </div>
+            <div className="flex items-center gap-2.5 pb-4 mb-5 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-brand-600 flex items-center justify-center font-bold text-xs">
+                3
               </div>
-              <Badge variant="secondary" className="text-[10px] bg-slate-100 text-slate-600">
-                shadcn Select + Input
-              </Badge>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Shipping Destination
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Complete delivery address for customs and courier label generation
+                </p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Address Line 1 *</FormLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+              {/* Address Line 1 */}
+              <FormItem className="sm:col-span-8">
+                <FormLabel>Street Address *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="Street address or P.O. Box"
+                    placeholder="e.g. 742 Evergreen Terrace"
                     value={line1}
                     onChange={(e) => setLine1(e.target.value)}
                     className={errors.line1 ? 'border-rose-500' : ''}
@@ -661,24 +1062,26 @@ export const CreateOrderForm: React.FC = () => {
                 {errors.line1 && <FormMessage>{errors.line1}</FormMessage>}
               </FormItem>
 
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Address Line 2 (Optional)</FormLabel>
+              {/* Address Line 2 */}
+              <FormItem className="sm:col-span-4">
+                <FormLabel>Apt / Suite / Unit</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="Apartment, suite, unit, building, floor, etc."
+                    placeholder="e.g. Apt 4B"
                     value={line2}
                     onChange={(e) => setLine2(e.target.value)}
                   />
                 </FormControl>
               </FormItem>
 
-              <FormItem>
+              {/* City */}
+              <FormItem className="sm:col-span-4">
                 <FormLabel>City *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. San Francisco"
+                    placeholder="e.g. Springfield"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className={errors.city ? 'border-rose-500' : ''}
@@ -687,12 +1090,13 @@ export const CreateOrderForm: React.FC = () => {
                 {errors.city && <FormMessage>{errors.city}</FormMessage>}
               </FormItem>
 
-              <FormItem>
+              {/* State */}
+              <FormItem className="sm:col-span-4">
                 <FormLabel>State / Province *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. CA"
+                    placeholder="e.g. OR or Ontario"
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     className={errors.state ? 'border-rose-500' : ''}
@@ -701,12 +1105,13 @@ export const CreateOrderForm: React.FC = () => {
                 {errors.state && <FormMessage>{errors.state}</FormMessage>}
               </FormItem>
 
-              <FormItem>
-                <FormLabel>Postal / ZIP Code *</FormLabel>
+              {/* Postal Code */}
+              <FormItem className="sm:col-span-4">
+                <FormLabel>Zip / Postal Code *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. 94105"
+                    placeholder="e.g. 97477"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     className={errors.postalCode ? 'border-rose-500' : ''}
@@ -715,9 +1120,9 @@ export const CreateOrderForm: React.FC = () => {
                 {errors.postalCode && <FormMessage>{errors.postalCode}</FormMessage>}
               </FormItem>
 
-              {/* Country Selection Dropdown using shadcn Select */}
-              <FormItem>
-                <FormLabel>Country / Region *</FormLabel>
+              {/* Country Selection */}
+              <FormItem className="sm:col-span-12">
+                <FormLabel>Destination Country *</FormLabel>
                 <FormControl>
                   <Select value={country} onValueChange={setCountry}>
                     <SelectTrigger className="w-full">
@@ -730,7 +1135,6 @@ export const CreateOrderForm: React.FC = () => {
                       <SelectItem value="Australia">🇦🇺 Australia</SelectItem>
                       <SelectItem value="Germany">🇩🇪 Germany</SelectItem>
                       <SelectItem value="France">🇫🇷 France</SelectItem>
-                      <SelectItem value="Netherlands">🇳🇱 Netherlands</SelectItem>
                       <SelectItem value="Japan">🇯🇵 Japan</SelectItem>
                     </SelectContent>
                   </Select>
@@ -740,116 +1144,11 @@ export const CreateOrderForm: React.FC = () => {
             </div>
           </Card>
 
-          {/* Section 4: Shipping Method & Fulfillment Logistics (all shadcn Select dropdowns) */}
-          <Card className="p-5 sm:p-6 shadow-soft">
-            <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-brand-600 flex items-center justify-center font-bold text-xs">
-                  4
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Fulfillment Logistics & Shipping Service
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Choose carrier service tier and dispatch warehouse hub
-                  </p>
-                </div>
-              </div>
-              <Badge variant="secondary" className="text-[10px] bg-slate-100 text-slate-600">
-                shadcn Selects
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Shipping Method Dropdown */}
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Delivery Service Level *</FormLabel>
-                <FormControl>
-                  <Select
-                    value={shippingMethod}
-                    onValueChange={(val) => setShippingMethod(val as any)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Choose shipping method..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <span className="font-medium text-slate-800">
-                            🚚 Standard Ground (3–5 business days)
-                          </span>
-                          <span className="font-bold text-emerald-600 text-xs">
-                            FREE
-                          </span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="express">
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <span className="font-medium text-slate-800">
-                            ✈️ Expedited Air Courier (2–3 business days)
-                          </span>
-                          <span className="font-bold text-brand-600 text-xs">
-                            +$4.99
-                          </span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="overnight">
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <span className="font-medium text-slate-800">
-                            ⚡ Priority Overnight Dispatch (Next Morning)
-                          </span>
-                          <span className="font-bold text-brand-600 text-xs">
-                            +$9.99
-                          </span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-              </FormItem>
-
-              {/* Warehouse Hub Dropdown */}
-              <FormItem>
-                <FormLabel>Origin Fulfillment Hub</FormLabel>
-                <FormControl>
-                  <Select value={warehouseHub} onValueChange={setWarehouseHub}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="us-west">🏢 US-West Hub (Reno, NV)</SelectItem>
-                      <SelectItem value="us-east">🏢 US-East Hub (Allentown, PA)</SelectItem>
-                      <SelectItem value="eu-central">🏢 EU-Central Hub (Frankfurt, DE)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-              </FormItem>
-
-              {/* Order Priority Dropdown */}
-              <FormItem>
-                <FormLabel>Fulfillment Priority</FormLabel>
-                <FormControl>
-                  <Select value={priorityTier} onValueChange={setPriorityTier}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="normal">Standard Verification Queue</SelectItem>
-                      <SelectItem value="urgent">🔥 Urgent Fast-Track (&lt; 2 hrs)</SelectItem>
-                      <SelectItem value="bulk">Bulk Direct Container</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-              </FormItem>
-            </div>
-          </Card>
-
-          {/* Section 5: Notes / Instructions */}
+          {/* Section 4: Notes / Instructions */}
           <Card className="p-5 sm:p-6 shadow-soft">
             <div className="flex items-center gap-2.5 pb-4 mb-5 border-b border-slate-100">
               <div className="w-8 h-8 rounded-lg bg-indigo-50 text-brand-600 flex items-center justify-center font-bold text-xs">
-                5
+                4
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">
@@ -871,34 +1170,42 @@ export const CreateOrderForm: React.FC = () => {
           </Card>
         </div>
 
-        {/* Right Sticky Column: Live Order Summary & Actions using shadcn Card & Button */}
+        {/* Right Sticky Column: Live Order Summary & Actions */}
         <div className="lg:col-span-1 lg:sticky lg:top-24 space-y-4">
           <Card className="p-5 shadow-soft">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 pb-3 border-b border-slate-100">
               Live Order Summary
             </h3>
 
-            {selectedProduct ? (
+            {orderItems.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={selectedProduct.thumbnail}
-                    alt=""
-                    className="w-12 h-12 rounded-xl object-cover shrink-0 border border-slate-200"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-slate-900 truncate">
-                      {selectedProduct.name}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      {quantity} × {formatCurrency(unitDropshipPrice)}
-                    </p>
-                  </div>
+                {/* List of items in summary */}
+                <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                  {orderItems.map((item) => (
+                    <div key={item.product.id} className="flex items-center gap-3">
+                      <img
+                        src={item.product.thumbnail}
+                        alt=""
+                        className="w-10 h-10 rounded-lg object-cover shrink-0 border border-slate-200"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-slate-900 truncate">
+                          {item.product.name}
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          {item.quantity} × {formatCurrency(item.product.dropshipPrice)}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-slate-800 shrink-0">
+                        {formatCurrency(item.product.dropshipPrice * item.quantity)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-slate-100 text-xs">
                   <div className="flex justify-between text-slate-500">
-                    <span>Product Subtotal:</span>
+                    <span>Products Subtotal ({totalQuantity} units):</span>
                     <span className="font-semibold text-slate-800">
                       {formatCurrency(productSubtotal)}
                     </span>
@@ -906,22 +1213,15 @@ export const CreateOrderForm: React.FC = () => {
 
                   <div className="flex justify-between text-slate-500">
                     <span>Shipping Service:</span>
-                    <span className={`font-semibold ${shippingFee === 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                      {shippingFee === 0 ? 'Free' : formatCurrency(shippingFee)}
+                    <span className="font-semibold text-emerald-600">
+                      Free (Included)
                     </span>
                   </div>
 
                   <div className="flex justify-between text-slate-500">
                     <span>Turnaround Time:</span>
                     <span className="font-medium text-slate-800">
-                      {selectedProduct.specs.fulfillmentTime}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between text-slate-500">
-                    <span>Origin Hub:</span>
-                    <span className="font-medium uppercase text-slate-800">
-                      {warehouseHub}
+                      1–2 business days
                     </span>
                   </div>
                 </div>
@@ -951,21 +1251,21 @@ export const CreateOrderForm: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-[10px] text-emerald-700 mt-0.5">
-                    Based on MSRP of {formatCurrency(unitMSRP)} per unit
+                    Based on catalog MSRP retail pricing
                   </p>
                 </div>
               </div>
             ) : (
               <p className="text-xs text-slate-400 text-center py-4">
-                Select a product to view financial summary
+                Add products above to view live financial summary
               </p>
             )}
 
-            {/* Action Buttons using shadcn Button */}
+            {/* Action Buttons */}
             <div className="mt-6 space-y-2.5 pt-4 border-t border-slate-100">
               <Button
                 type="submit"
-                disabled={isSubmitting || !selectedProduct}
+                disabled={isSubmitting || orderItems.length === 0}
                 className="w-full py-3 h-auto rounded-xl text-xs sm:text-sm shadow-soft"
               >
                 {isSubmitting ? (
@@ -976,7 +1276,7 @@ export const CreateOrderForm: React.FC = () => {
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                    <span>Submit Dropship Order</span>
+                    <span>Submit Dropship Order ({totalQuantity} Units)</span>
                   </>
                 )}
               </Button>

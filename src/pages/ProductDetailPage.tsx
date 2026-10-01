@@ -5,9 +5,25 @@ import { Product } from '../types';
 import { StockBadge } from '../components/common/StatusBadge';
 import { ProductCard } from '../components/common/ProductCard';
 import { formatCurrency, calculateMargin } from '../utils/formatters';
+import {
+  downloadProductImage,
+  downloadProductPDF,
+  downloadProductCSV,
+  downloadProductJSON,
+  downloadProductText,
+  downloadAllProductImages
+} from '../utils/exportUtils';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 import {
   ArrowLeft,
   ShoppingBag,
@@ -26,7 +42,13 @@ import {
   Clock,
   RotateCcw,
   Check,
-  Share2
+  Share2,
+  Download,
+  FileText,
+  Table,
+  FileCode,
+  Images,
+  ChevronDown
 } from 'lucide-react';
 
 export const ProductDetailPage: React.FC = () => {
@@ -45,6 +67,8 @@ export const ProductDetailPage: React.FC = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [calculatorQty, setCalculatorQty] = useState(1);
   const [copiedSku, setCopiedSku] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+  const [isDownloadingAllImages, setIsDownloadingAllImages] = useState(false);
 
   // If product not found
   if (!product) {
@@ -103,6 +127,140 @@ export const ProductDetailPage: React.FC = () => {
     });
   };
 
+  // Download Handlers
+  const handleDownloadActiveImage = async () => {
+    setIsDownloadingImage(true);
+    addToast({
+      type: 'info',
+      title: 'Downloading Image',
+      message: `Fetching image ${selectedImageIndex + 1} for ${product.name}...`
+    });
+    const ok = await downloadProductImage(
+      activeImage,
+      `${product.sku}_image_${selectedImageIndex + 1}`,
+      product.thumbnail
+    );
+    setIsDownloadingImage(false);
+    if (ok) {
+      addToast({
+        type: 'success',
+        title: 'Image Downloaded',
+        message: `${product.sku} image ${selectedImageIndex + 1} saved to your downloads.`
+      });
+    } else {
+      addToast({
+        type: 'error',
+        title: 'Download Failed',
+        message: 'Could not fetch image file. Please try again.'
+      });
+    }
+  };
+
+  const handleDownloadSpecificImage = async (e: React.MouseEvent, imgUrl: string, idx: number) => {
+    e.stopPropagation();
+    addToast({
+      type: 'info',
+      title: 'Downloading Image',
+      message: `Fetching image ${idx + 1}...`
+    });
+    const ok = await downloadProductImage(
+      imgUrl,
+      `${product.sku}_image_${idx + 1}`,
+      product.thumbnail
+    );
+    if (ok) {
+      addToast({
+        type: 'success',
+        title: 'Image Downloaded',
+        message: `Image ${idx + 1} saved.`
+      });
+    }
+  };
+
+  const handleDownloadAllImages = async () => {
+    setIsDownloadingAllImages(true);
+    addToast({
+      type: 'info',
+      title: 'Downloading Gallery',
+      message: `Downloading ${images.length} images for ${product.sku}...`
+    });
+    const count = await downloadAllProductImages(product);
+    setIsDownloadingAllImages(false);
+    addToast({
+      type: 'success',
+      title: 'Gallery Downloaded',
+      message: `Successfully saved ${count} images to downloads.`
+    });
+  };
+
+  const handleDownloadPDF = () => {
+    try {
+      downloadProductPDF(product);
+      addToast({
+        type: 'success',
+        title: 'PDF Spec Sheet Downloaded',
+        message: `${product.sku}_Product_Details.pdf generated.`
+      });
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'PDF Export Failed',
+        message: 'Could not generate product PDF document.'
+      });
+    }
+  };
+
+  const handleDownloadCSV = () => {
+    try {
+      downloadProductCSV(product);
+      addToast({
+        type: 'success',
+        title: 'CSV File Downloaded',
+        message: `${product.sku}_details.csv exported for store import.`
+      });
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'CSV Export Failed',
+        message: 'Could not export CSV.'
+      });
+    }
+  };
+
+  const handleDownloadJSON = () => {
+    try {
+      downloadProductJSON(product);
+      addToast({
+        type: 'success',
+        title: 'JSON Data Downloaded',
+        message: `${product.sku}_data.json saved.`
+      });
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Could not export JSON.'
+      });
+    }
+  };
+
+  const handleDownloadText = () => {
+    try {
+      downloadProductText(product);
+      addToast({
+        type: 'success',
+        title: 'Listing Copy Downloaded',
+        message: `${product.sku}_listing.txt saved.`
+      });
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'Export Failed',
+        message: 'Could not export text.'
+      });
+    }
+  };
+
   // Related products from same category
   const relatedProducts = products
     .filter((p) => p.category === product.category && p.id !== product.id)
@@ -131,7 +289,109 @@ export const ProductDetailPage: React.FC = () => {
         </div>
 
         {/* Top Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Direct Download Active Image */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadActiveImage}
+            disabled={isDownloadingImage}
+            className="rounded-xl text-xs font-medium h-9 border-slate-200 hover:border-brand-300 hover:bg-brand-50/50"
+            title="Download currently selected product photo"
+          >
+            {isDownloadingImage ? (
+              <div className="w-3.5 h-3.5 mr-1.5 border-2 border-brand-500/30 border-t-brand-600 rounded-full animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5 mr-1.5 text-brand-600" />
+            )}
+            <span>Download Image</span>
+          </Button>
+
+          {/* Download Product Details Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs font-semibold h-9 border-slate-200 hover:border-brand-400 hover:bg-brand-50/50 text-slate-800"
+                title="Download product specifications and marketing assets"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5 text-brand-600" />
+                <span>Download Details</span>
+                <ChevronDown className="w-3 h-3 ml-1 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                Product Specification Downloads
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleDownloadPDF} className="cursor-pointer gap-2 py-2">
+                <FileText className="w-4 h-4 text-brand-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">PDF Spec Sheet</span>
+                  <span className="text-[10px] text-slate-400">Complete branded datasheet</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-brand-600 border-brand-200 bg-brand-50/50">
+                  PDF
+                </Badge>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={handleDownloadCSV} className="cursor-pointer gap-2 py-2">
+                <Table className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">CSV Spreadsheet</span>
+                  <span className="text-[10px] text-slate-400">Shopify & store import format</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 bg-emerald-50/50">
+                  CSV
+                </Badge>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={handleDownloadText} className="cursor-pointer gap-2 py-2">
+                <FileCode className="w-4 h-4 text-amber-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">Listing Copy (.txt)</span>
+                  <span className="text-[10px] text-slate-400">Title, description & specs</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 bg-amber-50/50">
+                  TXT
+                </Badge>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={handleDownloadJSON} className="cursor-pointer gap-2 py-2">
+                <FileCode className="w-4 h-4 text-slate-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">Raw JSON Data</span>
+                  <span className="text-[10px] text-slate-400">Complete API data structure</span>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 bg-slate-50">
+                  JSON
+                </Badge>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                Photo Media Assets
+              </DropdownMenuLabel>
+
+              <DropdownMenuItem onClick={handleDownloadActiveImage} className="cursor-pointer gap-2 py-2">
+                <Download className="w-4 h-4 text-brand-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">Download Current Photo</span>
+                  <span className="text-[10px] text-slate-400">Image {selectedImageIndex + 1} of {images.length}</span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={handleDownloadAllImages} className="cursor-pointer gap-2 py-2">
+                <Images className="w-4 h-4 text-indigo-600 shrink-0" />
+                <div className="flex flex-col flex-1">
+                  <span className="font-semibold text-xs text-slate-800">Download All {images.length} Photos</span>
+                  <span className="text-[10px] text-slate-400">Batch download gallery photos</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
@@ -205,31 +465,82 @@ export const ProductDetailPage: React.FC = () => {
               <div className="absolute top-4 right-4">
                 <StockBadge status={product.stockStatus} count={product.stock} />
               </div>
+
+              {/* Floating Image Counter & Download Button on the Main Image */}
+              <div className="absolute bottom-4 left-4">
+                <span className="px-2.5 py-1 rounded-lg bg-slate-950/70 text-white text-[11px] font-medium backdrop-blur-md shadow-xs flex items-center gap-1.5">
+                  <span>Photo {selectedImageIndex + 1} of {images.length}</span>
+                </span>
+              </div>
+
+              <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadActiveImage}
+                  disabled={isDownloadingImage}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white text-xs font-semibold backdrop-blur-md shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                  title="Download this specific product image"
+                >
+                  {isDownloadingImage ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-brand-300" />
+                  )}
+                  <span>Download Image</span>
+                </button>
+              </div>
             </div>
 
             {/* Thumbnail Strip */}
             {images.length > 1 && (
               <div className="flex items-center gap-3 mt-4 overflow-x-auto pb-1">
                 {images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedImageIndex(idx)}
-                    className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${
-                      selectedImageIndex === idx
-                        ? 'border-brand-600 ring-4 ring-brand-500/20 scale-95'
-                        : 'border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img
-                      src={img}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
-                      }}
-                    />
-                  </button>
+                  <div key={idx} className="relative group/thumb shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedImageIndex(idx)}
+                      className={`relative w-20 h-20 rounded-xl overflow-hidden border-2 transition-all block ${
+                        selectedImageIndex === idx
+                          ? 'border-brand-600 ring-4 ring-brand-500/20 scale-95'
+                          : 'border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      <img
+                        src={img}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+                        }}
+                      />
+                    </button>
+                    {/* Hover download button on thumbnail */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleDownloadSpecificImage(e, img, idx)}
+                      className="absolute top-1 right-1 p-1 rounded-md bg-slate-900/80 hover:bg-brand-600 text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-xs"
+                      title={`Download image ${idx + 1}`}
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
                 ))}
+
+                {/* Quick Download All Thumbnails Button */}
+                <button
+                  type="button"
+                  onClick={handleDownloadAllImages}
+                  disabled={isDownloadingAllImages}
+                  className="shrink-0 flex flex-col items-center justify-center w-20 h-20 rounded-xl border border-dashed border-slate-300 hover:border-brand-500 hover:bg-brand-50/50 text-slate-500 hover:text-brand-600 transition-all text-[11px] font-semibold gap-1 disabled:opacity-50"
+                  title="Download all images in product gallery"
+                >
+                  {isDownloadingAllImages ? (
+                    <div className="w-4 h-4 border-2 border-brand-500/30 border-t-brand-600 rounded-full animate-spin" />
+                  ) : (
+                    <Images className="w-4 h-4" />
+                  )}
+                  <span>Save All</span>
+                </button>
               </div>
             )}
           </Card>
@@ -244,6 +555,7 @@ export const ProductDetailPage: React.FC = () => {
                 {product.description}
               </p>
             </div>
+
 
             {/* Feature Bullets */}
             {product.features && product.features.length > 0 && (
@@ -317,6 +629,121 @@ export const ProductDetailPage: React.FC = () => {
                   <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                     {product.specs.warranty}
                   </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Download & Media Assets Card */}
+          <Card className="p-6 shadow-soft space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Download className="w-4 h-4 text-brand-600" />
+                Download Product Assets & Details
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Save official marketing imagery and supplier compliance datasheets for your store catalog.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* PDF Spec Sheet */}
+              <div
+                onClick={handleDownloadPDF}
+                className="flex items-start gap-3.5 p-3.5 rounded-xl border border-slate-200 hover:border-brand-500/80 bg-white hover:bg-brand-50/20 transition-all cursor-pointer group shadow-xs hover:shadow-soft"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-xs font-bold text-slate-900 group-hover:text-brand-600 truncate">
+                      PDF Spec Sheet
+                    </span>
+                    <Badge variant="outline" className="text-[10px] text-brand-600 border-brand-200 bg-brand-50/60 px-1.5 py-0">
+                      PDF
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                    Printable product specification datasheet with wholesale pricing & margins
+                  </p>
+                </div>
+              </div>
+
+              {/* CSV Spreadsheet */}
+              <div
+                onClick={handleDownloadCSV}
+                className="flex items-start gap-3.5 p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500/80 bg-white hover:bg-emerald-50/20 transition-all cursor-pointer group shadow-xs hover:shadow-soft"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Table className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-xs font-bold text-slate-900 group-hover:text-emerald-600 truncate">
+                      Store Import CSV
+                    </span>
+                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 bg-emerald-50/60 px-1.5 py-0">
+                      CSV
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                    Structured tabular data formatted for Shopify, WooCommerce or Excel
+                  </p>
+                </div>
+              </div>
+
+              {/* Active High-Res Image */}
+              <div
+                onClick={handleDownloadActiveImage}
+                className="flex items-start gap-3.5 p-3.5 rounded-xl border border-slate-200 hover:border-indigo-500/80 bg-white hover:bg-indigo-50/20 transition-all cursor-pointer group shadow-xs hover:shadow-soft"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  {isDownloadingImage ? (
+                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-indigo-600 rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 truncate">
+                      Current Product Photo
+                    </span>
+                    <Badge variant="outline" className="text-[10px] text-indigo-600 border-indigo-200 bg-indigo-50/60 px-1.5 py-0">
+                      JPG
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                    High-res image file of Photo {selectedImageIndex + 1}
+                  </p>
+                </div>
+              </div>
+
+              {/* All Gallery Photos */}
+              <div
+                onClick={handleDownloadAllImages}
+                className="flex items-start gap-3.5 p-3.5 rounded-xl border border-slate-200 hover:border-violet-500/80 bg-white hover:bg-violet-50/20 transition-all cursor-pointer group shadow-xs hover:shadow-soft"
+              >
+                <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  {isDownloadingAllImages ? (
+                    <div className="w-5 h-5 border-2 border-violet-400 border-t-violet-600 rounded-full animate-spin" />
+                  ) : (
+                    <Images className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="text-xs font-bold text-slate-900 group-hover:text-violet-600 truncate">
+                      All Gallery Photos
+                    </span>
+                    <Badge variant="outline" className="text-[10px] text-violet-600 border-violet-200 bg-violet-50/60 px-1.5 py-0">
+                      {images.length} FILES
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2">
+                    Batch download all verified supplier product angles
+                  </p>
                 </div>
               </div>
             </div>
@@ -467,6 +894,77 @@ export const ProductDetailPage: React.FC = () => {
                 <Layers className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                 <span>Browse More Sourcing Products</span>
               </Button>
+
+              {/* Download Product Details Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full py-2.5 h-auto rounded-xl text-xs font-semibold border-slate-200 hover:border-brand-300 hover:bg-brand-50/40 text-slate-700"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-2 text-brand-600" />
+                    <span>Download Product Details</span>
+                    <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                    Format Options
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem onClick={handleDownloadPDF} className="cursor-pointer gap-2 py-2">
+                    <FileText className="w-4 h-4 text-brand-600 shrink-0" />
+                    <div className="flex flex-col flex-1">
+                      <span className="font-semibold text-xs text-slate-800">PDF Spec Sheet</span>
+                      <span className="text-[10px] text-slate-400">Complete branded datasheet</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] text-brand-600 border-brand-200 bg-brand-50/50">
+                      PDF
+                    </Badge>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={handleDownloadCSV} className="cursor-pointer gap-2 py-2">
+                    <Table className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div className="flex flex-col flex-1">
+                      <span className="font-semibold text-xs text-slate-800">CSV Spreadsheet</span>
+                      <span className="text-[10px] text-slate-400">Shopify & store import format</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 bg-emerald-50/50">
+                      CSV
+                    </Badge>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={handleDownloadText} className="cursor-pointer gap-2 py-2">
+                    <FileCode className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div className="flex flex-col flex-1">
+                      <span className="font-semibold text-xs text-slate-800">Listing Copy (.txt)</span>
+                      <span className="text-[10px] text-slate-400">Title, description & specs</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 bg-amber-50/50">
+                      TXT
+                    </Badge>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={handleDownloadJSON} className="cursor-pointer gap-2 py-2">
+                    <FileCode className="w-4 h-4 text-slate-600 shrink-0" />
+                    <div className="flex flex-col flex-1">
+                      <span className="font-semibold text-xs text-slate-800">Raw JSON Data</span>
+                      <span className="text-[10px] text-slate-400">Complete API data structure</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-200 bg-slate-50">
+                      JSON
+                    </Badge>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleDownloadActiveImage} className="cursor-pointer gap-2 py-2">
+                    <Download className="w-4 h-4 text-brand-600 shrink-0" />
+                    <div className="flex flex-col flex-1">
+                      <span className="font-semibold text-xs text-slate-800">Download Current Photo</span>
+                      <span className="text-[10px] text-slate-400">Photo {selectedImageIndex + 1} of {images.length}</span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Wholesale Buyer Protection Policy */}

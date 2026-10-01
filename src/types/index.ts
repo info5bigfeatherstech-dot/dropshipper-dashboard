@@ -70,6 +70,7 @@ export interface Order {
   customer: Customer;
   shippingAddress: Address;
   item: OrderItem;
+  items?: OrderItem[];
   status: OrderStatus;
   adminNote?: string;
   rejectionReason?: string;

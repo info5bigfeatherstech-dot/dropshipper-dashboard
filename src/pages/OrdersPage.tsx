@@ -443,21 +443,41 @@ export const OrdersPage: React.FC = () => {
 
                     {/* Product Info */}
                     <TableCell className="px-4">
-                      <div className="flex items-center gap-3 min-w-[200px]">
-                        <img
-                          src={order.item.image}
-                          alt=""
-                          className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 truncate max-w-[220px]">
-                            {order.item.productName}
-                          </p>
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            Qty: {order.item.quantity} • {order.item.sku}
-                          </span>
-                        </div>
-                      </div>
+                      {(() => {
+                        const items = order.items && order.items.length > 0 ? order.items : [order.item];
+                        const hasMultiple = items.length > 1;
+                        const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
+
+                        return (
+                          <div className="flex items-center gap-3 min-w-[200px]">
+                            <div className="relative shrink-0">
+                              <img
+                                src={order.item.image}
+                                alt=""
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                              />
+                              {hasMultiple && (
+                                <span className="absolute -top-1.5 -right-1.5 bg-brand-600 text-white font-bold text-[9px] px-1.5 py-0.5 rounded-full shadow-sm">
+                                  +{items.length - 1}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 truncate max-w-[220px]">
+                                {order.item.productName}
+                                {hasMultiple && (
+                                  <span className="ml-1.5 text-xs font-normal text-brand-600">
+                                    (+{items.length - 1} more)
+                                  </span>
+                                )}
+                              </p>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                {hasMultiple ? `${totalQty} units across ${items.length} items` : `Qty: ${order.item.quantity} • ${order.item.sku}`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </TableCell>
 
                     {/* Customer */}
@@ -479,7 +499,11 @@ export const OrdersPage: React.FC = () => {
 
                     {/* Amount */}
                     <TableCell className="px-4 font-bold text-slate-900 whitespace-nowrap">
-                      {formatCurrency(order.item.total)}
+                      {formatCurrency(
+                        order.items && order.items.length > 0
+                          ? order.items.reduce((acc, it) => acc + it.total, 0)
+                          : order.item.total
+                      )}
                     </TableCell>
 
                     {/* Status */}

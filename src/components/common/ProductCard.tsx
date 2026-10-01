@@ -14,7 +14,7 @@ interface ProductCardProps {
   onCreateOrder: (product: Product) => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({
+export const ProductCard: React.FC<ProductCardProps> = React.memo(({
   product,
   viewMode = 'grid',
   onViewDetails,
@@ -233,4 +233,4 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </div>
     </motion.div>
   );
-};
+});

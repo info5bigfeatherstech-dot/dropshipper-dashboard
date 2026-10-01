@@ -49,7 +49,7 @@ export const mockProducts: Product[] = [
     thumbnail: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
     images: [
       'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1622445262464-84b14e0745b1?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1585338107529-13afc5f02586?auto=format&fit=crop&w=800&q=80',
       'https://images.unsplash.com/photo-1586953208448-b95a79798f07?auto=format&fit=crop&w=800&q=80'
     ],
     description: 'Foldable aircraft-grade aluminum charging stand designed for simultaneous Qi-compatible smartphone, smartwatch, and earbuds charging with heat-dissipating cooling ribs.',

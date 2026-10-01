@@ -7,54 +7,56 @@ interface StatusBadgeProps {
   size?: 'sm' | 'md';
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' }) => {
-  const configs: Record<
-    OrderStatus,
-    { label: string; bg: string; text: string; border: string; icon: React.ReactNode; dot: string }
-  > = {
-    pending: {
-      label: 'Pending Approval',
-      bg: 'bg-amber-50 dark:bg-amber-950/40',
-      text: 'text-amber-700 dark:text-amber-400',
-      border: 'border-amber-200/80 dark:border-amber-800/50',
-      dot: 'bg-amber-500 animate-pulse',
-      icon: <Clock className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
-    },
-    approved: {
-      label: 'Approved',
-      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
-      text: 'text-emerald-700 dark:text-emerald-400',
-      border: 'border-emerald-200/80 dark:border-emerald-800/50',
-      dot: 'bg-emerald-500',
-      icon: <CheckCircle2 className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
-    },
-    shipped: {
-      label: 'Shipped',
-      bg: 'bg-blue-50 dark:bg-blue-950/40',
-      text: 'text-blue-700 dark:text-blue-400',
-      border: 'border-blue-200/80 dark:border-blue-800/50',
-      dot: 'bg-blue-500',
-      icon: <Truck className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
-    },
-    delivered: {
-      label: 'Delivered',
-      bg: 'bg-teal-50 dark:bg-teal-950/40',
-      text: 'text-teal-700 dark:text-teal-400',
-      border: 'border-teal-200/80 dark:border-teal-800/50',
-      dot: 'bg-teal-500',
-      icon: <PackageCheck className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
-    },
-    rejected: {
-      label: 'Rejected',
-      bg: 'bg-rose-50 dark:bg-rose-950/40',
-      text: 'text-rose-700 dark:text-rose-400',
-      border: 'border-rose-200/80 dark:border-rose-800/50',
-      dot: 'bg-rose-500',
-      icon: <XCircle className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
-    }
-  };
+const STATUS_CONFIGS: Record<
+  OrderStatus,
+  { label: string; bg: string; text: string; border: string; icon: React.ComponentType<{ className?: string }>; dot: string }
+> = {
+  pending: {
+    label: 'Pending Approval',
+    bg: 'bg-amber-50 dark:bg-amber-950/40',
+    text: 'text-amber-700 dark:text-amber-400',
+    border: 'border-amber-200/80 dark:border-amber-800/50',
+    dot: 'bg-amber-500 animate-pulse',
+    icon: Clock
+  },
+  approved: {
+    label: 'Approved',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    border: 'border-emerald-200/80 dark:border-emerald-800/50',
+    dot: 'bg-emerald-500',
+    icon: CheckCircle2
+  },
+  shipped: {
+    label: 'Shipped',
+    bg: 'bg-blue-50 dark:bg-blue-950/40',
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-200/80 dark:border-blue-800/50',
+    dot: 'bg-blue-500',
+    icon: Truck
+  },
+  delivered: {
+    label: 'Delivered',
+    bg: 'bg-teal-50 dark:bg-teal-950/40',
+    text: 'text-teal-700 dark:text-teal-400',
+    border: 'border-teal-200/80 dark:border-teal-800/50',
+    dot: 'bg-teal-500',
+    icon: PackageCheck
+  },
+  rejected: {
+    label: 'Rejected',
+    bg: 'bg-rose-50 dark:bg-rose-950/40',
+    text: 'text-rose-700 dark:text-rose-400',
+    border: 'border-rose-200/80 dark:border-rose-800/50',
+    dot: 'bg-rose-500',
+    icon: XCircle
+  }
+};
 
-  const config = configs[status] || configs.pending;
+export const StatusBadge: React.FC<StatusBadgeProps> = React.memo(({ status, size = 'md' }) => {
+  const config = STATUS_CONFIGS[status] || STATUS_CONFIGS.pending;
+  const IconComponent = config.icon;
+  const iconClass = size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5';
 
   return (
     <span
@@ -63,13 +65,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
       } ${config.bg} ${config.text} ${config.border}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
-      {config.icon}
+      <IconComponent className={iconClass} />
       <span>{config.label}</span>
     </span>
   );
-};
+});
 
-export const StockBadge: React.FC<{ status: StockStatus; count?: number }> = ({ status, count }) => {
+export const StockBadge: React.FC<{ status: StockStatus; count?: number }> = React.memo(({ status, count }) => {
   switch (status) {
     case 'in_stock':
       return (
@@ -93,4 +95,4 @@ export const StockBadge: React.FC<{ status: StockStatus; count?: number }> = ({ 
         </span>
       );
   }
-};
+});

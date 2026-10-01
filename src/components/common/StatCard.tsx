@@ -11,7 +11,7 @@ interface StatCardProps {
   onClick?: () => void;
 }
 
-export const StatCard: React.FC<StatCardProps> = ({
+export const StatCard: React.FC<StatCardProps> = React.memo(({
   label,
   value,
   subtext,
@@ -78,4 +78,4 @@ export const StatCard: React.FC<StatCardProps> = ({
       </div>
     </motion.div>
   );
-};
+});
