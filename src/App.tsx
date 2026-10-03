@@ -1,16 +1,55 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { ProductsPage } from './pages/ProductsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { CreateOrderPage } from './pages/CreateOrderPage';
+import { LoginPage } from './pages/LoginPage';
+import { getAuthToken, isAuthBypassed } from './lib/api';
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  if (isAuthBypassed()) {
+    return <>{children}</>;
+  }
+  const token = getAuthToken();
+  
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  return <>{children}</>;
+};
+
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  if (isAuthBypassed()) {
+    return <Navigate to="/" replace />;
+  }
+  const token = getAuthToken();
+  if (token) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+};
 
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Layout />}>
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          }
+        />
+        
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
           <Route index element={<Navigate to="/products" replace />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="products/:id" element={<ProductDetailPage />} />

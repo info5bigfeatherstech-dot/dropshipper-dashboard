@@ -402,6 +402,56 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({
           </div>
         </div>
 
+        {/* Dropship Courier Route & Quote Details */}
+        {(order.shippingCharges !== undefined || order.shippingPaymentMode || order.shippingProvider) && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-soft space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-brand-600" />
+                Courier Route & Fulfillment
+              </h4>
+              {order.shippingPaymentMode && (
+                <span
+                  className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                    order.shippingPaymentMode === 'cod'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-indigo-100 text-indigo-800'
+                  }`}
+                >
+                  {order.shippingPaymentMode === 'cod' ? 'Cash on Delivery (COD)' : 'Prepaid Shipping'}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 block">Shipping Charges</span>
+                <span className="font-bold text-slate-900 dark:text-white">
+                  {order.shippingCharges !== undefined ? formatCurrency(order.shippingCharges) : '₹0.00'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">Est. Delivery SLA</span>
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  {order.estimatedDeliveryDays ? `${order.estimatedDeliveryDays} Days` : '3–5 Days'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">Carrier Partner</span>
+                <span className="font-medium text-slate-800 dark:text-slate-200 uppercase">
+                  {order.shippingProvider || 'Shiprocket'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">Origin Warehouse</span>
+                <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                  {order.warehousePincode || '560001'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tracking & Admin Notes */}
         {(order.adminNote || order.notes || order.trackingNumber) && (
           <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-3">

@@ -50,6 +50,7 @@ import {
   Images,
   ChevronDown
 } from 'lucide-react';
+import { ServiceabilityCheckerModal } from '../components/shipping/ServiceabilityCheckerModal';
 
 export const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -69,6 +70,7 @@ export const ProductDetailPage: React.FC = () => {
   const [copiedSku, setCopiedSku] = useState(false);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [isDownloadingAllImages, setIsDownloadingAllImages] = useState(false);
+  const [showServiceabilityModal, setShowServiceabilityModal] = useState(false);
 
   // If product not found
   if (!product) {
@@ -887,6 +889,16 @@ export const ProductDetailPage: React.FC = () => {
               </Button>
 
               <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowServiceabilityModal(true)}
+                className="w-full py-2.5 h-auto rounded-xl text-xs font-semibold border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/70 transition-colors"
+              >
+                <Truck className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                <span>Check Delivery & Shipping Quotes</span>
+              </Button>
+
+              <Button
                 variant="outline"
                 onClick={() => navigate('/products')}
                 className="w-full py-2.5 h-auto rounded-xl text-xs font-semibold"
@@ -1018,6 +1030,20 @@ export const ProductDetailPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Route Serviceability Modal */}
+      <ServiceabilityCheckerModal
+        isOpen={showServiceabilityModal}
+        onClose={() => setShowServiceabilityModal(false)}
+        defaultWeightKg={
+          product.specs?.weight?.toLowerCase().endsWith('kg')
+            ? parseFloat(product.specs.weight) || 0.5
+            : product.specs?.weight?.toLowerCase().endsWith('g')
+            ? (parseFloat(product.specs.weight) || 500) / 1000
+            : 0.5
+        }
+        defaultOrderAmount={product.dropshipPrice}
+      />
     </div>
   );
 };

@@ -12,9 +12,11 @@ import {
   User,
   Shield,
   LogOut,
-  Sparkles
+  Sparkles,
+  Truck
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
+import { ServiceabilityCheckerModal } from '../shipping/ServiceabilityCheckerModal';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,6 +44,7 @@ export const TopBar: React.FC = () => {
   const [searchFocused, setSearchFocused] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showServiceabilityModal, setShowServiceabilityModal] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -217,6 +220,17 @@ export const TopBar: React.FC = () => {
         </div>
 
 
+        {/* Quick Route Serviceability Check Button */}
+        <button
+          type="button"
+          onClick={() => setShowServiceabilityModal(true)}
+          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-300 hover:bg-brand-50/50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+          title="Route Serviceability Checker (POST /api/dropshipper/serviceability/check)"
+        >
+          <Truck className="w-3.5 h-3.5 text-brand-600" />
+          <span>Check Delivery</span>
+        </button>
+
         {/* Notifications Bell */}
         <div ref={notifRef} className="relative">
           <button
@@ -338,6 +352,12 @@ export const TopBar: React.FC = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Standalone Route Serviceability Modal */}
+      <ServiceabilityCheckerModal
+        isOpen={showServiceabilityModal}
+        onClose={() => setShowServiceabilityModal(false)}
+      />
     </header>
   );
 };

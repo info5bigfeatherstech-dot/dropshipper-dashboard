@@ -58,6 +58,11 @@ interface StoreState {
       postalCode: string;
       country: string;
     };
+    shippingCharges?: number;
+    shippingPaymentMode?: 'prepaid' | 'cod';
+    estimatedDeliveryDays?: string;
+    warehousePincode?: string;
+    shippingProvider?: string;
     notes?: string;
   }, isDraft?: boolean) => Order;
 
@@ -195,6 +200,11 @@ export const useStore = create<StoreState>((set, get) => {
         shippingAddress: orderData.shippingAddress,
         item: primaryItem,
         items: orderItemsList,
+        shippingCharges: orderData.shippingCharges,
+        shippingPaymentMode: orderData.shippingPaymentMode,
+        estimatedDeliveryDays: orderData.estimatedDeliveryDays,
+        warehousePincode: orderData.warehousePincode,
+        shippingProvider: orderData.shippingProvider,
         status: 'pending',
         notes: orderData.notes,
         createdAt: now,

@@ -1,35 +1,77 @@
 import { Product, SortOption } from '../types';
 import { mockProducts } from '../data/mockProducts';
-
-// Simulated latency helper to mimic real network responses
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { apiFetch } from '../lib/api';
 
 export interface ProductFilterParams {
+  page?: number;
+  limit?: number;
+  q?: string;
   search?: string;
+  categoryId?: string;
   category?: string;
-  sort?: SortOption;
+  inStockOnly?: boolean;
+  sort?: SortOption | 'newest' | 'name_asc' | 'price_asc' | 'price_desc';
   stockStatus?: string;
+}
+
+export interface CatalogVariantDetail {
+  productCode: string;
+  sku: string;
+  name: string;
+  dropshipPrice: number;
+  suggestedRetailPrice: number;
+  stock: number;
+  images: string[];
+  attributes?: Record<string, string>;
+}
+
+export interface DownloadPackResponse {
+  productCode: string;
+  images: string[];
+  zipUrl?: string;
+  title: string;
+  description: string;
 }
 
 export const productsService = {
   /**
-   * Fetch all products with optional client/server query filtering and sorting
-   * To connect to a real backend, replace the body with:
-   * return fetch('/api/v1/products?' + new URLSearchParams(params)).then(r => r.json());
+   * Fetch all products from /api/dropshipper/catalog/products
+   * Supported query params: page, limit, q, categoryId, inStockOnly, sort
+   * Falls back to mockProducts if API endpoint is not yet mounted in dev
    */
   async getProducts(params?: ProductFilterParams): Promise<Product[]> {
-    await delay(320); // Network simulation
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.q || params?.search) query.set('q', (params.q || params.search)!.trim());
+    if (params?.categoryId || (params?.category && params.category !== 'all')) {
+      query.set('categoryId', (params.categoryId || params.category)!);
+    }
+    if (params?.inStockOnly) query.set('inStockOnly', 'true');
+    if (params?.sort) query.set('sort', params.sort);
 
+    try {
+      const response = await apiFetch(`/api/dropshipper/catalog/products?${query.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        const items = Array.isArray(data) ? data : data.products || data.data || [];
+        if (items.length > 0) return items;
+      }
+    } catch (err) {
+      console.warn('Backend catalog API offline, falling back to mock catalog', err);
+    }
+
+    // Local fallback for offline/development mode
     let results = [...mockProducts];
 
-    if (params?.search) {
-      const q = params.search.toLowerCase().trim();
+    const searchStr = (params?.q || params?.search)?.toLowerCase().trim();
+    if (searchStr) {
       results = results.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q))
+          p.name.toLowerCase().includes(searchStr) ||
+          p.sku.toLowerCase().includes(searchStr) ||
+          p.category.toLowerCase().includes(searchStr) ||
+          p.tags.some((t) => t.toLowerCase().includes(searchStr))
       );
     }
 
@@ -76,19 +118,64 @@ export const productsService = {
   },
 
   /**
-   * Get single product by ID
+   * GET /api/dropshipper/catalog/products/:slug
+   */
+  async getProductBySlug(slug: string): Promise<Product | null> {
+    try {
+      const response = await apiFetch(`/api/dropshipper/catalog/products/${slug}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.product || data.data || data;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch product by slug from backend', e);
+    }
+    const found = mockProducts.find((p) => p.id === slug || p.sku.toLowerCase() === slug.toLowerCase());
+    return found ? { ...found } : null;
+  },
+
+  /**
+   * Compatibility alias for getProductById
    */
   async getProductById(id: string): Promise<Product | null> {
-    await delay(200);
-    const found = mockProducts.find((p) => p.id === id);
-    return found ? { ...found } : null;
+    return this.getProductBySlug(id);
+  },
+
+  /**
+   * GET /api/dropshipper/catalog/variants/:productCode
+   */
+  async getVariant(productCode: string): Promise<CatalogVariantDetail | null> {
+    try {
+      const response = await apiFetch(`/api/dropshipper/catalog/variants/${productCode}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.variant || data.data || data;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch variant details from backend', e);
+    }
+    return null;
+  },
+
+  /**
+   * GET /api/dropshipper/catalog/variants/:productCode/download-pack
+   */
+  async getDownloadPack(productCode: string): Promise<DownloadPackResponse | null> {
+    try {
+      const response = await apiFetch(`/api/dropshipper/catalog/variants/${productCode}/download-pack`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch download-pack from backend', e);
+    }
+    return null;
   },
 
   /**
    * Get unique product categories
    */
   async getCategories(): Promise<string[]> {
-    await delay(100);
     const categories = Array.from(new Set(mockProducts.map((p) => p.category)));
     return ['all', ...categories];
   }

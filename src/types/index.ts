@@ -76,6 +76,11 @@ export interface Order {
   rejectionReason?: string;
   trackingNumber?: string;
   shippingCarrier?: string;
+  shippingCharges?: number;
+  shippingPaymentMode?: 'prepaid' | 'cod';
+  estimatedDeliveryDays?: string;
+  warehousePincode?: string;
+  shippingProvider?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -91,3 +96,5 @@ export interface ToastMessage {
   message?: string;
   duration?: number;
 }
+
+export * from './dropshipper';

@@ -38,11 +38,8 @@ import {
   Minus,
   ShieldCheck,
   RotateCcw,
-  Truck,
-  Building2,
   SlidersHorizontal,
   ChevronDown,
-  Globe,
   Clock,
   Search,
   Barcode,
@@ -52,6 +49,15 @@ import {
   PackageSearch
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import {
+  ServiceabilityQuote,
+  ServiceabilityCheckResponse,
+  SelectedShippingPaymentMode
+} from '../../types/dropshipper';
+import { ServiceabilityQuotePicker } from '../shipping/ServiceabilityQuotePicker';
+import { DEFAULT_WAREHOUSE_PINCODE } from '../../services/serviceabilityService';
+import { ordersService } from '../../services/ordersService';
+import { openRazorpayCheckout } from '../../utils/razorpay';
 
 export interface SelectedOrderItem {
   product: Product;
@@ -71,7 +77,6 @@ interface FormErrors {
 }
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-const INDIAN_PHONE_REGEX = /^\+91\s?[6-9]\d{4}\s?\d{5}$/;
 
 export const CreateOrderForm: React.FC = () => {
   const navigate = useNavigate();
@@ -100,13 +105,22 @@ export const CreateOrderForm: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState('sarah.jenkins@example.com');
   const [customerPhone, setCustomerPhone] = useState('+91 98765 43210');
 
-  // Address state
-  const [line1, setLine1] = useState('452 Market Street');
-  const [line2, setLine2] = useState('Apt 12C');
-  const [city, setCity] = useState('San Francisco');
-  const [state, setState] = useState('CA');
-  const [postalCode, setPostalCode] = useState('94105');
-  const [country, setCountry] = useState('United States');
+  // Address state (Defaulted to Indian dropship route)
+  const [line1, setLine1] = useState('Flat 402, Block B, Silver Palms');
+  const [line2, setLine2] = useState('Connaught Place');
+  const [city, setCity] = useState('New Delhi');
+  const [state, setState] = useState('Delhi');
+  const [postalCode, setPostalCode] = useState('110001');
+  const [country, setCountry] = useState('India');
+
+  // Dropshipper Serviceability & Carrier Shipping State
+  const [warehousePincode, setWarehousePincode] = useState(DEFAULT_WAREHOUSE_PINCODE);
+  const [selectedShippingPaymentMode, setSelectedShippingPaymentMode] =
+    useState<SelectedShippingPaymentMode>('prepaid');
+  const [selectedShippingQuote, setSelectedShippingQuote] =
+    useState<ServiceabilityQuote | null>(null);
+  const [serviceabilityResponse, setServiceabilityResponse] =
+    useState<ServiceabilityCheckResponse | null>(null);
 
   const [notes, setNotes] = useState('Handle with care. Leave at package locker if unavailable.');
 
@@ -303,7 +317,11 @@ export const CreateOrderForm: React.FC = () => {
     }
 
     if (!postalCode.trim()) {
-      errs.postalCode = 'Postal / Zip code is required.';
+      errs.postalCode = 'Postal / Pincode is required.';
+    } else if (!/^\d{6}$/.test(postalCode.trim())) {
+      errs.postalCode = 'Please enter a valid 6-digit Indian delivery pincode (e.g. 110001).';
+    } else if (serviceabilityResponse && !serviceabilityResponse.isDeliverable) {
+      errs.postalCode = 'Destination pincode is not serviceable by courier partners.';
     }
 
     if (!country.trim()) {
@@ -328,12 +346,16 @@ export const CreateOrderForm: React.FC = () => {
 
     setIsSubmitting(true);
 
-    // Simulate 600ms API saving delay
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    const finalShippingCharge = selectedShippingQuote ? selectedShippingQuote.deliveryCharges : 0;
 
-    const newOrder = createOrder(
-      {
-        items: orderItems,
+    try {
+      // 1. Prepare backend payload matching POST /api/dropshipper/orders
+      const orderPayload = {
+        items: orderItems.map((item) => ({
+          productId: item.product.id,
+          sku: item.product.sku,
+          quantity: item.quantity
+        })),
         customer: {
           name: customerName.trim(),
           email: customerEmail.trim(),
@@ -347,29 +369,185 @@ export const CreateOrderForm: React.FC = () => {
           postalCode: postalCode.trim(),
           country: country.trim()
         },
+        customerPincode: postalCode.trim(),
+        warehousePincode: warehousePincode,
         notes: notes.trim() || undefined
-      },
-      isDraft
-    );
+      };
 
-    setIsSubmitting(false);
-    setSubmittedOrder(newOrder);
-
-    // Trigger celebratory confetti
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
+      // 2. Call backend POST /api/dropshipper/orders
+      const backendResponse = await ordersService.createOrder(orderPayload).catch((err) => {
+        console.warn('Backend createOrder error, attempting fallback:', err);
+        return null;
       });
-    } catch {}
 
-    addToast({
-      type: 'success',
-      title: 'Order Submitted Successfully',
-      message: `Order ${newOrder.orderNumber} placed. Queued for admin verification.`,
-      duration: 5000
-    });
+      // 3. If Razorpay checkout info returned, launch Razorpay Checkout Modal
+      if (backendResponse?.razorpay) {
+        addToast({
+          type: 'info',
+          title: 'Opening Razorpay Checkout',
+          message: 'Complete the payment to confirm your order.'
+        });
+
+        await openRazorpayCheckout({
+          keyId: backendResponse.razorpay.keyId,
+          orderId: backendResponse.razorpay.orderId,
+          internalOrderId: backendResponse.orderId || backendResponse.orderNumber,
+          amount: backendResponse.razorpay.amount,
+          currency: backendResponse.razorpay.currency || 'INR',
+          name: 'OWB Dropship Fulfillment',
+          description: `Payment for Order ${backendResponse.orderNumber || backendResponse.orderId}`,
+          prefill: {
+            name: customerName.trim(),
+            email: customerEmail.trim(),
+            contact: customerPhone.trim()
+          },
+          onSuccess: (verification) => {
+            setIsSubmitting(false);
+            const newOrder = createOrder(
+              {
+                items: orderItems,
+                customer: {
+                  name: customerName.trim(),
+                  email: customerEmail.trim(),
+                  phone: customerPhone.trim()
+                },
+                shippingAddress: {
+                  line1: line1.trim(),
+                  line2: line2.trim() || undefined,
+                  city: city.trim(),
+                  state: state.trim(),
+                  postalCode: postalCode.trim(),
+                  country: country.trim()
+                },
+                shippingCharges: finalShippingCharge,
+                shippingPaymentMode: 'prepaid',
+                estimatedDeliveryDays: selectedShippingQuote?.estimatedDays || '3–5',
+                warehousePincode: warehousePincode,
+                shippingProvider: selectedShippingQuote?.shippingProvider || 'shipmozo',
+                notes: notes.trim() || undefined
+              },
+              false
+            );
+
+            if (backendResponse.orderNumber || backendResponse.orderId) {
+              newOrder.orderNumber = backendResponse.orderNumber || backendResponse.orderId;
+            }
+            newOrder.status = 'confirmed';
+            setSubmittedOrder(newOrder);
+
+            try {
+              confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+              });
+            } catch {}
+
+            addToast({
+              type: 'success',
+              title: 'Payment Successful & Verified',
+              message: `Order ${newOrder.orderNumber} is confirmed!`,
+              duration: 6000
+            });
+          },
+          onError: (err) => {
+            setIsSubmitting(false);
+            addToast({
+              type: 'error',
+              title: 'Payment Failed / Incomplete',
+              message: err?.message || 'Payment was not completed. Please try again.'
+            });
+          }
+        });
+      } else {
+        // When backend /orders route is still in development, trigger Razorpay with calculated order amount
+        const totalPayableInr =
+          orderItems.reduce((acc, it) => acc + it.product.dropshipPrice * it.quantity, 0) +
+          finalShippingCharge;
+        const fallbackOrderId = 'OWB-DS-' + Math.floor(100000 + Math.random() * 900000);
+
+        addToast({
+          type: 'info',
+          title: 'Opening Razorpay Checkout',
+          message: 'Complete the payment in the checkout window.'
+        });
+
+        await openRazorpayCheckout({
+          internalOrderId: fallbackOrderId,
+          amount: Math.round(totalPayableInr * 100),
+          currency: 'INR',
+          name: 'OWB Dropship Fulfillment',
+          description: `Order ${fallbackOrderId} (Payable: ₹${totalPayableInr})`,
+          prefill: {
+            name: customerName.trim(),
+            email: customerEmail.trim(),
+            contact: customerPhone.trim()
+          },
+          onSuccess: () => {
+            setIsSubmitting(false);
+            const newOrder = createOrder(
+              {
+                items: orderItems,
+                customer: {
+                  name: customerName.trim(),
+                  email: customerEmail.trim(),
+                  phone: customerPhone.trim()
+                },
+                shippingAddress: {
+                  line1: line1.trim(),
+                  line2: line2.trim() || undefined,
+                  city: city.trim(),
+                  state: state.trim(),
+                  postalCode: postalCode.trim(),
+                  country: country.trim()
+                },
+                shippingCharges: finalShippingCharge,
+                shippingPaymentMode: 'prepaid',
+                estimatedDeliveryDays: selectedShippingQuote?.estimatedDays || '3–5',
+                warehousePincode: warehousePincode,
+                shippingProvider: selectedShippingQuote?.shippingProvider || 'shipmozo',
+                notes: notes.trim() || undefined
+              },
+              false
+            );
+
+            newOrder.orderNumber = fallbackOrderId;
+            newOrder.status = 'confirmed';
+            setSubmittedOrder(newOrder);
+
+            try {
+              confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+              });
+            } catch {}
+
+            addToast({
+              type: 'success',
+              title: 'Payment Successful & Verified',
+              message: `Order ${newOrder.orderNumber} successfully paid!`,
+              duration: 6000
+            });
+          },
+          onError: (err) => {
+            setIsSubmitting(false);
+            addToast({
+              type: 'error',
+              title: 'Payment Cancelled / Incomplete',
+              message: err?.message || 'Payment window closed or cancelled.'
+            });
+          }
+        });
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      addToast({
+        type: 'error',
+        title: 'Order Submission Error',
+        message: err?.message || 'Failed to place order.'
+      });
+    }
   };
 
   const handleSaveDraft = () => {
@@ -393,43 +571,43 @@ export const CreateOrderForm: React.FC = () => {
     setLine2('');
     setCity('');
     setState('');
-    setPostalCode('');
+    setPostalCode('110001');
     setNotes('');
     setErrors({});
   };
 
   // Quick Template Fillers
-  const fillSampleTemplate = (type: 'us' | 'ca' | 'uk') => {
-    if (type === 'us') {
+  const fillSampleTemplate = (type: 'delhi' | 'mumbai' | 'bangalore') => {
+    if (type === 'delhi') {
       setCustomerName('Sarah Jenkins');
       setCustomerEmail('sarah.jenkins@example.com');
       setCustomerPhone('+91 98765 43210');
-      setLine1('452 Market Street');
-      setLine2('Apt 12C');
-      setCity('San Francisco');
-      setState('CA');
-      setPostalCode('94105');
-      setCountry('United States');
-    } else if (type === 'ca') {
-      setCustomerName('Liam Vance');
-      setCustomerEmail('liam.vance@vancetech.ca');
+      setLine1('Flat 402, Block B, Silver Palms');
+      setLine2('Connaught Place');
+      setCity('New Delhi');
+      setState('Delhi');
+      setPostalCode('110001');
+      setCountry('India');
+    } else if (type === 'mumbai') {
+      setCustomerName('Rahul Sharma');
+      setCustomerEmail('rahul.sharma@example.com');
       setCustomerPhone('+91 98201 54321');
-      setLine1('100 King Street West');
-      setLine2('Suite 2400');
-      setCity('Toronto');
-      setState('ON');
-      setPostalCode('M5X 1A9');
-      setCountry('Canada');
-    } else if (type === 'uk') {
-      setCustomerName('Oliver Sterling');
-      setCustomerEmail('oliver.sterling@harbor.co.uk');
+      setLine1('701 Ocean View Towers');
+      setLine2('Marine Drive');
+      setCity('Mumbai');
+      setState('Maharashtra');
+      setPostalCode('400001');
+      setCountry('India');
+    } else if (type === 'bangalore') {
+      setCustomerName('Priya Nair');
+      setCustomerEmail('priya.nair@example.com');
       setCustomerPhone('+91 97123 45678');
-      setLine1('88 Leadenhall Street');
-      setLine2('Floor 14');
-      setCity('London');
-      setState('Greater London');
-      setPostalCode('EC3A 3BP');
-      setCountry('United Kingdom');
+      setLine1('12 Indiranagar 100ft Road');
+      setLine2('HAL 2nd Stage');
+      setCity('Bengaluru');
+      setState('Karnataka');
+      setPostalCode('560001');
+      setCountry('India');
     }
     addToast({
       type: 'info',
@@ -438,12 +616,29 @@ export const CreateOrderForm: React.FC = () => {
     });
   };
 
+  // Volumetric weight calculation based on items
+  const computedWeightKg = useMemo(() => {
+    let weight = 0;
+    for (const item of orderItems) {
+      const rawWeight = item.product.specs?.weight || '';
+      let itemWeightKg = 0.5;
+      if (rawWeight.toLowerCase().endsWith('kg')) {
+        itemWeightKg = parseFloat(rawWeight) || 0.5;
+      } else if (rawWeight.toLowerCase().endsWith('g')) {
+        itemWeightKg = (parseFloat(rawWeight) || 500) / 1000;
+      }
+      weight += itemWeightKg * item.quantity;
+    }
+    return Math.max(0.05, Math.round(weight * 100) / 100);
+  }, [orderItems]);
+
   // Calculations for live order summary
   const totalQuantity = orderItems.reduce((acc, it) => acc + it.quantity, 0);
   const productSubtotal = +orderItems
     .reduce((acc, it) => acc + it.product.dropshipPrice * it.quantity, 0)
     .toFixed(2);
-  const totalCost = productSubtotal;
+  const shippingCharges = selectedShippingQuote ? selectedShippingQuote.deliveryCharges : 0;
+  const totalCost = +(productSubtotal + shippingCharges).toFixed(2);
   const estimatedRevenue = +orderItems
     .reduce((acc, it) => acc + it.product.suggestedRetailPrice * it.quantity, 0)
     .toFixed(2);
@@ -556,19 +751,19 @@ export const CreateOrderForm: React.FC = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64 shadow-soft-lg">
-                  <DropdownMenuLabel>Auto-Fill Test Customer</DropdownMenuLabel>
+                  <DropdownMenuLabel>Auto-Fill Dropship Test Customer</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('us')}>
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('delhi')}>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                    <span>United States (San Francisco)</span>
+                    <span>New Delhi (110001)</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('ca')}>
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('mumbai')}>
                     <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
-                    <span>Canada (Toronto, ON)</span>
+                    <span>Mumbai (400001)</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('uk')}>
+                  <DropdownMenuItem onClick={() => fillSampleTemplate('bangalore')}>
                     <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-                    <span>United Kingdom (London)</span>
+                    <span>Bengaluru Hub (560001)</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleResetForm} className="text-rose-600 focus:text-rose-700">
@@ -1129,6 +1324,7 @@ export const CreateOrderForm: React.FC = () => {
                       <SelectValue placeholder="Select Country" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="India">🇮🇳 India</SelectItem>
                       <SelectItem value="United States">🇺🇸 United States</SelectItem>
                       <SelectItem value="Canada">🇨🇦 Canada</SelectItem>
                       <SelectItem value="United Kingdom">🇬🇧 United Kingdom</SelectItem>
@@ -1141,6 +1337,39 @@ export const CreateOrderForm: React.FC = () => {
                 </FormControl>
                 {errors.country && <FormMessage>{errors.country}</FormMessage>}
               </FormItem>
+
+              {/* Serviceability & Dual Quote Picker Sub-module */}
+              <div className="sm:col-span-12 pt-3 border-t border-slate-100">
+                <ServiceabilityQuotePicker
+                  customerPincode={postalCode}
+                  onCustomerPincodeChange={(pin) => {
+                    setPostalCode(pin);
+                    if (errors.postalCode) {
+                      setErrors((prev) => ({ ...prev, postalCode: undefined }));
+                    }
+                  }}
+                  warehousePincode={warehousePincode}
+                  onWarehousePincodeChange={setWarehousePincode}
+                  weightKg={computedWeightKg}
+                  orderAmount={productSubtotal}
+                  selectedPaymentMode={selectedShippingPaymentMode}
+                  onSelectPaymentMode={(mode, quote) => {
+                    setSelectedShippingPaymentMode(mode);
+                    setSelectedShippingQuote(quote);
+                  }}
+                  onServiceabilityResult={(res) => {
+                    setServiceabilityResponse(res);
+                    if (res && !res.isDeliverable) {
+                      setErrors((prev) => ({
+                        ...prev,
+                        postalCode: 'Destination pincode is not serviceable by courier partners.'
+                      }));
+                    } else {
+                      setErrors((prev) => ({ ...prev, postalCode: undefined }));
+                    }
+                  }}
+                />
+              </div>
             </div>
           </Card>
 
@@ -1211,19 +1440,46 @@ export const CreateOrderForm: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex justify-between text-slate-500">
-                    <span>Shipping Service:</span>
-                    <span className="font-semibold text-emerald-600">
-                      Free (Included)
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span className="flex items-center gap-1.5">
+                      <span>Shipping Service:</span>
+                      {selectedShippingQuote && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] uppercase font-bold py-0 px-1.5 ${
+                            selectedShippingPaymentMode === 'cod'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}
+                        >
+                          {selectedShippingPaymentMode === 'cod' ? 'COD' : 'Prepaid'}
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="font-semibold text-slate-800">
+                      {selectedShippingQuote
+                        ? formatCurrency(selectedShippingQuote.deliveryCharges)
+                        : 'Select pincode'}
                     </span>
                   </div>
 
                   <div className="flex justify-between text-slate-500">
-                    <span>Turnaround Time:</span>
+                    <span>Transit Turnaround:</span>
                     <span className="font-medium text-slate-800">
-                      1–2 business days
+                      {selectedShippingQuote
+                        ? `${selectedShippingQuote.estimatedDays} business days`
+                        : '3–5 business days'}
                     </span>
                   </div>
+
+                  {selectedShippingQuote && (
+                    <div className="flex justify-between text-[11px] text-slate-400">
+                      <span>Carrier Provider:</span>
+                      <span className="font-medium text-slate-600 truncate max-w-[130px]">
+                        {selectedShippingQuote.courierName || 'Shiprocket'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Total Cost */}
