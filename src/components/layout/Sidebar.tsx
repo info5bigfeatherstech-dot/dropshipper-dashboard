@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Truck
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -21,6 +22,7 @@ export const Sidebar: React.FC = () => {
   const isProductsActive = location.pathname.startsWith('/products');
   const isOrdersActive = location.pathname.startsWith('/orders');
   const isCreateOrderActive = location.pathname === '/orders/create';
+  const isServiceabilityActive = location.pathname === '/orders/serviceability';
   const isAllOrdersActive = location.pathname === '/orders';
 
   const [ordersDropdownOpen, setOrdersDropdownOpen] = useState(true);
@@ -194,6 +196,30 @@ export const Sidebar: React.FC = () => {
                         }`}
                       >
                         New
+                      </span>
+                    </NavLink>
+
+                    {/* Sub-tab 3: Check Serviceability */}
+                    <NavLink
+                      to="/orders/serviceability"
+                      className={({ isActive }) =>
+                        `flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                          isActive || isServiceabilityActive
+                            ? 'bg-brand-600 text-white font-bold shadow-soft'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                        }`
+                      }
+                    >
+                      <Truck className="w-4 h-4 shrink-0" />
+                      <span className="flex-1">Serviceability</span>
+                      <span
+                        className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                          isServiceabilityActive
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-indigo-50 text-indigo-700'
+                        }`}
+                      >
+                        Check
                       </span>
                     </NavLink>
                   </div>

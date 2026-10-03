@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { Product } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
@@ -14,14 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
 import {
   FormItem,
   FormLabel,
@@ -38,8 +30,6 @@ import {
   Minus,
   ShieldCheck,
   RotateCcw,
-  SlidersHorizontal,
-  ChevronDown,
   Clock,
   Search,
   Barcode,
@@ -100,29 +90,32 @@ export const CreateOrderForm: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Customer state
-  const [customerName, setCustomerName] = useState('Sarah Jenkins');
-  const [customerEmail, setCustomerEmail] = useState('sarah.jenkins@example.com');
-  const [customerPhone, setCustomerPhone] = useState('+91 98765 43210');
+  // Customer state - starts empty
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
 
-  // Address state (Defaulted to Indian dropship route)
-  const [line1, setLine1] = useState('Flat 402, Block B, Silver Palms');
-  const [line2, setLine2] = useState('Connaught Place');
-  const [city, setCity] = useState('New Delhi');
-  const [state, setState] = useState('Delhi');
-  const [postalCode, setPostalCode] = useState('110001');
+  const location = useLocation();
+  const prefill = (location.state as any) || {};
+
+  // Address state (prefilled only if navigated from Serviceability tab)
+  const [line1, setLine1] = useState(() => prefill.prefillAddress || '');
+  const [line2, setLine2] = useState('');
+  const [city, setCity] = useState(() => prefill.prefillCity || '');
+  const [state, setState] = useState(() => prefill.prefillState || '');
+  const [postalCode, setPostalCode] = useState(() => prefill.prefillPincode || '');
   const [country, setCountry] = useState('India');
 
   // Dropshipper Serviceability & Carrier Shipping State
-  const [warehousePincode, setWarehousePincode] = useState(DEFAULT_WAREHOUSE_PINCODE);
+  const [warehousePincode, setWarehousePincode] = useState(() => prefill.prefillWarehouse || DEFAULT_WAREHOUSE_PINCODE);
   const [selectedShippingPaymentMode, setSelectedShippingPaymentMode] =
     useState<SelectedShippingPaymentMode>('prepaid');
   const [selectedShippingQuote, setSelectedShippingQuote] =
-    useState<ServiceabilityQuote | null>(null);
+    useState<ServiceabilityQuote | null>(() => prefill.prefillSelectedQuote || null);
   const [serviceabilityResponse, setServiceabilityResponse] =
     useState<ServiceabilityCheckResponse | null>(null);
 
-  const [notes, setNotes] = useState('Handle with care. Leave at package locker if unavailable.');
+  const [notes, setNotes] = useState('');
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -571,49 +564,9 @@ export const CreateOrderForm: React.FC = () => {
     setLine2('');
     setCity('');
     setState('');
-    setPostalCode('110001');
+    setPostalCode('');
     setNotes('');
     setErrors({});
-  };
-
-  // Quick Template Fillers
-  const fillSampleTemplate = (type: 'delhi' | 'mumbai' | 'bangalore') => {
-    if (type === 'delhi') {
-      setCustomerName('Sarah Jenkins');
-      setCustomerEmail('sarah.jenkins@example.com');
-      setCustomerPhone('+91 98765 43210');
-      setLine1('Flat 402, Block B, Silver Palms');
-      setLine2('Connaught Place');
-      setCity('New Delhi');
-      setState('Delhi');
-      setPostalCode('110001');
-      setCountry('India');
-    } else if (type === 'mumbai') {
-      setCustomerName('Rahul Sharma');
-      setCustomerEmail('rahul.sharma@example.com');
-      setCustomerPhone('+91 98201 54321');
-      setLine1('701 Ocean View Towers');
-      setLine2('Marine Drive');
-      setCity('Mumbai');
-      setState('Maharashtra');
-      setPostalCode('400001');
-      setCountry('India');
-    } else if (type === 'bangalore') {
-      setCustomerName('Priya Nair');
-      setCustomerEmail('priya.nair@example.com');
-      setCustomerPhone('+91 97123 45678');
-      setLine1('12 Indiranagar 100ft Road');
-      setLine2('HAL 2nd Stage');
-      setCity('Bengaluru');
-      setState('Karnataka');
-      setPostalCode('560001');
-      setCountry('India');
-    }
-    addToast({
-      type: 'info',
-      title: 'Template Populated',
-      message: `Form filled with ${type.toUpperCase()} test customer data.`
-    });
   };
 
   // Volumetric weight calculation based on items
@@ -741,37 +694,17 @@ export const CreateOrderForm: React.FC = () => {
                 </div>
               </div>
 
-              {/* Quick Template Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" type="button" className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
-                    <span>⚡ Quick Templates</span>
-                    <ChevronDown className="w-3 h-3 text-slate-400" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64 shadow-soft-lg">
-                  <DropdownMenuLabel>Auto-Fill Dropship Test Customer</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('delhi')}>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                    <span>New Delhi (110001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('mumbai')}>
-                    <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
-                    <span>Mumbai (400001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('bangalore')}>
-                    <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-                    <span>Bengaluru Hub (560001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleResetForm} className="text-rose-600 focus:text-rose-700">
-                    <RotateCcw className="w-3.5 h-3.5 mr-2" />
-                    <span>Reset All Fields</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Reset Form Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={handleResetForm}
+                className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-rose-600"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Form</span>
+              </Button>
             </div>
 
             {/* Search by Product Name & Product Code Bar */}
@@ -1103,7 +1036,7 @@ export const CreateOrderForm: React.FC = () => {
                   <Input
                     type="text"
                     maxLength={50}
-                    placeholder="First Name Middle Name Last Name (e.g. Sarah Marie Jenkins)"
+                    placeholder="Enter recipient full name"
                     value={customerName}
                     onChange={(e) => {
                       setCustomerName(e.target.value);
@@ -1118,7 +1051,7 @@ export const CreateOrderForm: React.FC = () => {
                   <FormMessage>{errors.customerName}</FormMessage>
                 ) : (
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Enter full recipient name: First Name, optional Middle Name, and Last Name (up to 50 characters / words).
+                    Enter full recipient name: First Name, optional Middle Name, and Last Name.
                   </p>
                 )}
               </FormItem>
@@ -1129,7 +1062,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="email"
-                    placeholder="sarah.jenkins@example.com"
+                    placeholder="name@example.com"
                     value={customerEmail}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1248,7 +1181,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. 742 Evergreen Terrace"
+                    placeholder="House / Flat No., Building Name, Street Area"
                     value={line1}
                     onChange={(e) => setLine1(e.target.value)}
                     className={errors.line1 ? 'border-rose-500' : ''}
@@ -1263,7 +1196,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. Apt 4B"
+                    placeholder="Apartment, Landmark, Suite (optional)"
                     value={line2}
                     onChange={(e) => setLine2(e.target.value)}
                   />
@@ -1276,7 +1209,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. Springfield"
+                    placeholder="City"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className={errors.city ? 'border-rose-500' : ''}
@@ -1291,7 +1224,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. OR or Ontario"
+                    placeholder="State / Province"
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     className={errors.state ? 'border-rose-500' : ''}
@@ -1306,7 +1239,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. 97477"
+                    placeholder="6-digit Pincode"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     className={errors.postalCode ? 'border-rose-500' : ''}
@@ -1391,7 +1324,7 @@ export const CreateOrderForm: React.FC = () => {
 
             <textarea
               rows={3}
-              placeholder="e.g. Leave package in front porch box, no signature required."
+              placeholder="Special delivery instructions, carrier remarks or landmark directions (optional)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-900"

@@ -57,7 +57,7 @@ export const serviceabilityService = {
       lengthCm: Math.max(1, Number(payload.lengthCm) || 10),
       widthCm: Math.max(1, Number(payload.widthCm) || 10),
       heightCm: Math.max(1, Number(payload.heightCm) || 5),
-      paymentMode: 'prepaid',
+      paymentMode: payload.paymentMode || 'both',
       orderAmount: payload.orderAmount !== undefined ? Number(payload.orderAmount) : 999,
       storefront: payload.storefront || 'ecomm'
     };

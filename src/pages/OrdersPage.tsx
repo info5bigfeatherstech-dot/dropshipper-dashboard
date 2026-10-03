@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { Order, OrderStatus } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -7,6 +7,8 @@ import { StatCard } from '../components/common/StatCard';
 import { EmptyState } from '../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { downloadOrderPDF, downloadOrderCSV } from '../utils/exportUtils';
+import { Tabs, TabItem } from '../components/common/Tabs';
+import { AddressServiceabilityChecker } from '../components/shipping/AddressServiceabilityChecker';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
@@ -51,8 +53,13 @@ import {
   ChevronDown
 } from 'lucide-react';
 
-export const OrdersPage: React.FC = () => {
+export interface OrdersPageProps {
+  initialTab?: 'orders' | 'serviceability';
+}
+
+export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     orders,
     setSelectedOrderForDetail,
@@ -60,6 +67,21 @@ export const OrdersPage: React.FC = () => {
   } = useStore();
 
   // Search & Filter state for All Orders table
+  const [activeMainTab, setActiveMainTab] = useState<'orders' | 'serviceability'>(() => {
+    if (initialTab) return initialTab;
+    if (location.pathname === '/orders/serviceability') return 'serviceability';
+    return 'orders';
+  });
+
+  // Keep state in sync with URL
+  React.useEffect(() => {
+    if (location.pathname === '/orders/serviceability') {
+      setActiveMainTab('serviceability');
+    } else if (location.pathname === '/orders') {
+      setActiveMainTab('orders');
+    }
+  }, [location.pathname]);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [dateRange, setDateRange] = useState<'all' | 'today' | '7days' | '30days'>('all');
@@ -256,8 +278,37 @@ export const OrdersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stat Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Primary Section Tabs */}
+      <div className="flex items-center">
+        <Tabs
+          tabs={[
+            {
+              id: 'orders',
+              label: 'All Orders',
+              count: totalOrdersCount,
+              icon: <ShoppingBag className="w-4 h-4" />
+            },
+            {
+              id: 'serviceability',
+              label: 'Check Serviceability & Rates',
+              icon: <Truck className="w-4 h-4" />
+            }
+          ]}
+          activeTab={activeMainTab}
+          onChange={(tabId) => {
+            const next = tabId as 'orders' | 'serviceability';
+            setActiveMainTab(next);
+            navigate(next === 'serviceability' ? '/orders/serviceability' : '/orders');
+          }}
+        />
+      </div>
+
+      {activeMainTab === 'serviceability' ? (
+        <AddressServiceabilityChecker />
+      ) : (
+        <>
+          {/* Stat Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Orders"
           value={totalOrdersCount}
@@ -614,6 +665,8 @@ export const OrdersPage: React.FC = () => {
           </>
         )}
       </Card>
+        </>
+      )}
     </div>
   );
 };

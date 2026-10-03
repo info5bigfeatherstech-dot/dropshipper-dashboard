@@ -55,6 +55,7 @@ export const App: React.FC = () => {
           <Route path="products/:id" element={<ProductDetailPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/create" element={<CreateOrderPage />} />
+          <Route path="orders/serviceability" element={<OrdersPage initialTab="serviceability" />} />
           <Route path="*" element={<Navigate to="/products" replace />} />
         </Route>
       </Routes>
