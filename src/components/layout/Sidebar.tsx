@@ -11,7 +11,8 @@ import {
   ChevronRight,
   ChevronDown,
   Sparkles,
-  Truck
+  Truck,
+  Shield
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -223,6 +224,22 @@ export const Sidebar: React.FC = () => {
             </AnimatePresence>
           )}
         </div>
+
+        {/* 3. Admin Approvals */}
+        <NavLink
+          to="/admin/requests"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all group ${
+              isActive
+                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60'
+            } ${sidebarCollapsed ? 'justify-center px-0' : ''}`
+          }
+          title={sidebarCollapsed ? 'Admin Approvals' : undefined}
+        >
+          <Shield className="w-5 h-5 shrink-0 text-amber-600 group-hover:scale-105 transition-transform" />
+          {!sidebarCollapsed && <span className="flex-1">Admin Approvals</span>}
+        </NavLink>
       </div>
 
       {/* Footer Info Box */}

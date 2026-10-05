@@ -34,6 +34,28 @@ export interface DownloadPackResponse {
   description: string;
 }
 
+function asNumber(val: unknown, fallback = 0): number {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function imageList(...sources: unknown[]): string[] {
+  const out: string[] = [];
+  for (const s of sources) {
+    if (typeof s === 'string' && s.trim()) out.push(s.trim());
+    else if (Array.isArray(s)) {
+      for (const item of s) {
+        if (typeof item === 'string' && item.trim()) out.push(item.trim());
+        else if (item && typeof item === 'object') {
+          const url = (item as any).url || (item as any).secure_url || (item as any).src;
+          if (typeof url === 'string' && url.trim()) out.push(url.trim());
+        }
+      }
+    }
+  }
+  return Array.from(new Set(out));
+}
+
 /**
  * Normalizes any backend or raw catalog payload into a type-safe Product object
  * that will never cause React render errors (e.g. objects as React children, undefined specs).
@@ -448,12 +470,12 @@ export const productsService = {
         const data = await response.json();
         const list = Array.isArray(data) ? data : data.categories || data.data || [];
         if (list.length > 0) {
-          const names = list
+          const names: string[] = list
             .map((c: any) =>
-              typeof c === 'object' && c !== null ? c.name || c.slug : String(c)
+              typeof c === 'object' && c !== null ? String(c.name || c.slug || '') : String(c)
             )
-            .filter(Boolean);
-          const unique = Array.from(new Set(names));
+            .filter((s: string): boolean => Boolean(s));
+          const unique: string[] = Array.from(new Set(names));
           return unique.includes('all') ? unique : ['all', ...unique];
         }
       }

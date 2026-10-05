@@ -145,6 +145,10 @@ export const LoginPage: React.FC = () => {
             <Link to="/register" className="text-indigo-600 font-medium hover:underline">
               Register &amp; pay
             </Link>
+            {' · '}
+            <Link to="/register?mode=status" className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:underline">
+              Check Application Status
+            </Link>
           </p>
         </div>
       </div>

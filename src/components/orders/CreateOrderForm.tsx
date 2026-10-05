@@ -409,9 +409,9 @@ export const CreateOrderForm: React.FC = () => {
     const finalShippingCharge = selectedShippingQuote ? selectedShippingQuote.deliveryCharges : 0;
 
     const cleanPhone = customerPhone.replace(/[^\d]/g, '').slice(-10);
-    const formattedPhone = cleanPhone.length === 10
-      ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}`
-      : customerPhone.trim();
+    const line1Combined = [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', ');
+    const addressLine1 = line1Combined.length >= 10 ? line1Combined : `${line1Combined}, ${city.trim()}`;
+    const addressLine2 = landmark.trim() || undefined;
 
     try {
       // 1. Prepare backend payload matching POST /api/dropshipper/orders
@@ -422,17 +422,40 @@ export const CreateOrderForm: React.FC = () => {
           quantity: item.quantity
         })),
         customer: {
+          fullName: customerName.trim(),
           name: customerName.trim(),
           email: customerEmail.trim(),
-          phone: formattedPhone
+          phone: cleanPhone,
+          addressLine1,
+          addressLine2
         },
-        shippingAddress: {
-          line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
-          line2: landmark.trim() || undefined,
+        addressLine1,
+        addressLine2,
+        address: {
+          fullName: customerName.trim(),
+          phone: cleanPhone,
+          houseNumber: buildingNo.trim() || '1',
+          building: buildingNo.trim() || '',
+          area: streetName.trim() || landmark.trim() || city.trim(),
+          landmark: landmark.trim() || undefined,
+          addressLine1,
+          addressLine2,
           city: city.trim(),
           state: state.trim(),
           postalCode: postalCode.trim(),
-          country: country.trim()
+          country: country.trim() || 'India'
+        },
+        shippingAddress: {
+          fullName: customerName.trim(),
+          phone: cleanPhone,
+          addressLine1,
+          addressLine2,
+          line1: addressLine1,
+          line2: addressLine2,
+          city: city.trim(),
+          state: state.trim(),
+          postalCode: postalCode.trim(),
+          country: country.trim() || 'India'
         },
         customerPincode: postalCode.trim(),
         warehousePincode: warehousePincode,
@@ -441,12 +464,20 @@ export const CreateOrderForm: React.FC = () => {
       };
 
       // 2. Call backend POST /api/dropshipper/orders
-      const backendResponse = await ordersService.createOrder(orderPayload).catch((err) => {
-        console.warn('Backend createOrder error, attempting fallback:', err);
-        return null;
-      });
+      let backendResponse;
+      try {
+        backendResponse = await ordersService.createOrder(orderPayload);
+      } catch (err: any) {
+        setIsSubmitting(false);
+        addToast({
+          type: 'error',
+          title: 'Order Creation Failed',
+          message: err?.message || 'Server rejected order creation. Please check recipient address and details.'
+        });
+        return;
+      }
 
-      // 3. If Razorpay checkout info returned, launch Razorpay Checkout Modal
+      // 3. Launch Razorpay Checkout Modal for the backend order
       if (backendResponse?.razorpay) {
         addToast({
           type: 'info',
@@ -457,7 +488,7 @@ export const CreateOrderForm: React.FC = () => {
         await openRazorpayCheckout({
           keyId: backendResponse.razorpay.keyId,
           orderId: backendResponse.razorpay.orderId,
-          internalOrderId: backendResponse.orderId || backendResponse.orderNumber,
+          internalOrderId: backendResponse.orderId || backendResponse.orderNumber || '',
           amount: backendResponse.razorpay.amount,
           currency: backendResponse.razorpay.currency || 'INR',
           name: 'OWB Dropship Fulfillment',
@@ -475,7 +506,7 @@ export const CreateOrderForm: React.FC = () => {
                 customer: {
                   name: customerName.trim(),
                   email: customerEmail.trim(),
-                  phone: formattedPhone
+                  phone: cleanPhone
                 },
                 shippingAddress: {
                   line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
@@ -529,87 +560,11 @@ export const CreateOrderForm: React.FC = () => {
           }
         });
       } else {
-        // When backend /orders route is still in development, trigger Razorpay with calculated order amount
-        const totalPayableInr =
-          orderItems.reduce((acc, it) => acc + it.product.dropshipPrice * it.quantity, 0) +
-          finalShippingCharge;
-        const fallbackOrderId = 'OWB-DS-' + Math.floor(100000 + Math.random() * 900000);
-
+        setIsSubmitting(false);
         addToast({
-          type: 'info',
-          title: 'Opening Razorpay Checkout',
-          message: 'Complete the payment in the checkout window.'
-        });
-
-        await openRazorpayCheckout({
-          internalOrderId: fallbackOrderId,
-          amount: Math.round(totalPayableInr * 100),
-          currency: 'INR',
-          name: 'OWB Dropship Fulfillment',
-          description: `Order ${fallbackOrderId} (Payable: ₹${totalPayableInr})`,
-          prefill: {
-            name: customerName.trim(),
-            email: customerEmail.trim(),
-            contact: cleanPhone || customerPhone.trim()
-          },
-          onSuccess: () => {
-            setIsSubmitting(false);
-            const newOrder = createOrder(
-              {
-                items: orderItems,
-                customer: {
-                  name: customerName.trim(),
-                  email: customerEmail.trim(),
-                  phone: formattedPhone
-                },
-                shippingAddress: {
-                  line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
-                  line2: landmark.trim() || undefined,
-                  city: city.trim(),
-                  state: state.trim(),
-                  postalCode: postalCode.trim(),
-                  country: country.trim()
-                },
-                shippingCharges: finalShippingCharge,
-                shippingPaymentMode: 'prepaid',
-                estimatedDeliveryDays: selectedShippingQuote?.estimatedDays || '3–5',
-                warehousePincode: warehousePincode,
-                shippingProvider: selectedShippingQuote?.shippingProvider || 'shipmozo',
-                notes: notes.trim() || undefined
-              },
-              false
-            );
-
-            newOrder.orderNumber = fallbackOrderId;
-            newOrder.status = 'approved';
-
-            try {
-              confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-              });
-            } catch {}
-
-            addToast({
-              type: 'success',
-              title: 'Payment Successful & Order Placed',
-              message: `Order ${newOrder.orderNumber} successfully paid! Redirecting to All Orders...`,
-              duration: 5000
-            });
-
-            // Redirect immediately to All Orders page where GET /orders is hit
-            setActiveOrderTab('all');
-            navigate('/orders', { replace: true, state: { newlyCreatedOrderId: newOrder.orderNumber } });
-          },
-          onError: (err) => {
-            setIsSubmitting(false);
-            addToast({
-              type: 'error',
-              title: 'Payment Cancelled / Incomplete',
-              message: err?.message || 'Payment window closed or cancelled.'
-            });
-          }
+          type: 'error',
+          title: 'Payment Order Missing',
+          message: 'Server did not return a Razorpay order. Please retry.'
         });
       }
     } catch (err: any) {

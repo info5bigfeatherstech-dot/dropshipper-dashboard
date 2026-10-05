@@ -25,6 +25,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator
 } from '../ui/dropdown-menu';
+import { dropshipperAuthService } from '../../services/dropshipperAuthService';
+import { getDropshipperUser } from '../../lib/api';
 
 export const TopBar: React.FC = () => {
   const location = useLocation();
@@ -45,6 +47,18 @@ export const TopBar: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showServiceabilityModal, setShowServiceabilityModal] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(() => getDropshipperUser());
+
+  useEffect(() => {
+    dropshipperAuthService
+      .me()
+      .then((data) => {
+        if (data?.dropshipper || data?.user) {
+          setUserProfile(data.dropshipper || data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -328,27 +342,29 @@ export const TopBar: React.FC = () => {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 p-1.5 pl-2 rounded-xl border border-slate-200/80 hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/20">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-brand-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                JS
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-brand-600 text-white flex items-center justify-center font-bold text-xs shadow-xs uppercase">
+                {userProfile?.fullName ? userProfile.fullName.slice(0, 2) : 'DS'}
               </div>
               <div className="hidden sm:block text-left pr-1">
-                <p className="text-xs font-semibold text-slate-800 leading-tight">
-                  Jordan S.
+                <p className="text-xs font-semibold text-slate-800 leading-tight truncate max-w-[120px]">
+                  {userProfile?.fullName || 'Dropshipper'}
                 </p>
-                <p className="text-[10px] text-slate-400 leading-none">Premier Seller</p>
+                <p className="text-[10px] text-slate-400 leading-none">Verified Seller</p>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-soft-lg">
-            <div className="p-2 border-b border-slate-100 mb-1">
-              <p className="font-bold text-slate-800 text-xs">
-                Jordan Sterling
+          <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-soft-lg">
+            <div className="p-2 border-b border-slate-100 dark:border-slate-800 mb-1">
+              <p className="font-bold text-slate-800 dark:text-white text-xs truncate">
+                {userProfile?.fullName || 'Active Dropshipper'}
               </p>
-              <p className="text-slate-400 text-[11px]">seller@dropflow.demo</p>
+              <p className="text-slate-400 text-[11px] truncate">
+                {userProfile?.email || userProfile?.phone || 'portal@offerwalebaba.com'}
+              </p>
               <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
-                <Shield className="w-3 h-3" /> Tier 1 Verified Seller
+                <Shield className="w-3 h-3" /> 1-Year Active Subscription
               </div>
             </div>
 
@@ -365,6 +381,30 @@ export const TopBar: React.FC = () => {
             <DropdownMenuItem onClick={() => navigate('/orders/create')}>
               <Sparkles className="w-4 h-4 text-brand-600" />
               <span>Quick Order Entry</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem onClick={() => navigate('/admin/requests')}>
+              <Shield className="w-4 h-4 text-amber-600" />
+              <span>Admin Approvals</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              onClick={async () => {
+                try {
+                  await dropshipperAuthService.logout();
+                } catch {
+                  // ignore
+                }
+                navigate('/login', { replace: true });
+              }}
+              className="text-rose-600 hover:text-rose-700 focus:text-rose-700 focus:bg-rose-50"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Log Out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

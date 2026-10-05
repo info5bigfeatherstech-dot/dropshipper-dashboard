@@ -51,6 +51,17 @@ export const setDropshipperSession = (payload: {
   }
 };
 
+export const getDropshipperUser = (): any => {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(USER_KEY) || localStorage.getItem('user');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
 export const clearDropshipperSession = (): void => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -68,6 +79,7 @@ export const isAuthBypassed = (): boolean => {
 /**
  * Standard fetch wrapper. Attaches dropshipper Bearer only when a portal session exists
  * (or bypass staff token when DROPSHIPPER_AUTH_BYPASS=true).
+ * Automatically attempts silent token refresh with /auth/refresh upon 401.
  */
 export async function apiFetch(
   url: string,
@@ -87,9 +99,39 @@ export async function apiFetch(
     headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
   }
 
-  return fetch(url, {
+  let res = await fetch(url, {
     ...options,
     headers,
     credentials: options.credentials || 'include',
   });
+
+  // If 401 Unauthorized and not already calling auth routes, try silent refresh
+  if (res.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/refresh') && !url.includes('/auth/logout')) {
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null;
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch('/api/dropshipper/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData?.accessToken) {
+            setAuthToken(refreshData.accessToken);
+            headers.set('Authorization', `Bearer ${refreshData.accessToken}`);
+            res = await fetch(url, {
+              ...options,
+              headers,
+              credentials: options.credentials || 'include',
+            });
+          }
+        }
+      } catch {
+        // Ignore refresh failure
+      }
+    }
+  }
+
+  return res;
 }

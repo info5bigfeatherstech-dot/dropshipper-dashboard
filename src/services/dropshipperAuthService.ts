@@ -1,4 +1,4 @@
-import { apiFetch } from '../lib/api';
+import { apiFetch, clearDropshipperSession, setAuthToken } from '../lib/api';
 
 export type DropshipperRegisterPayload = {
   fullName: string;
@@ -16,6 +16,37 @@ export type DropshipperRegisterPayload = {
   monthlyEstimatedPurchase: number | string;
   idProofUrl?: string;
   businessAddressProofUrl?: string;
+};
+
+export type SubscriptionSettings = {
+  channel: string;
+  subscriptionAmountInr: number;
+  subscriptionYears: number;
+  registrationOpen: boolean;
+  updatedAt?: string;
+};
+
+export type RegistrationStatusResponse = {
+  success: boolean;
+  request: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    businessName?: string;
+    amountDueInr: number;
+    amountPaidInr: number;
+    payment?: {
+      status: 'pending' | 'paid' | 'failed';
+      razorpayOrderId?: string;
+      razorpayPaymentId?: string;
+      paidAt?: string;
+    };
+    adminStatus: 'pending' | 'approved' | 'rejected';
+    adminDecisionNote?: string;
+    createdAt: string;
+  };
+  nextStep: 'complete_payment' | 'admin_approval' | 'otp_and_password' | 'rejected';
 };
 
 async function parseJson(res: Response) {
@@ -53,11 +84,47 @@ async function publicFetch(url: string, options: RequestInit = {}) {
 }
 
 export const dropshipperAuthService = {
-  async getSubscriptionSettings() {
-    const res = await publicFetch('/api/dropshipper/auth/subscription-settings');
+  /**
+   * GET /auth/subscription-settings
+   * Fetches public subscription fee & registrationOpen flag
+   */
+  async getSubscriptionSettings(): Promise<{ success: boolean; settings: SubscriptionSettings; isFallback?: boolean }> {
+    try {
+      const res = await publicFetch('/api/dropshipper/auth/subscription-settings');
+      return await parseJson(res);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.code === 'ROUTE_NOT_FOUND' || String(err?.message || '').includes('Cannot GET')) {
+        return {
+          success: true,
+          settings: {
+            channel: 'dropship',
+            subscriptionAmountInr: 800,
+            subscriptionYears: 1,
+            registrationOpen: true,
+          },
+          isFallback: true,
+        };
+      }
+      throw err;
+    }
+  },
+
+  /**
+   * POST /auth/register/start
+   * Validate applicant + fee preview (no DB record written)
+   */
+  async startRegistration(body: DropshipperRegisterPayload) {
+    const res = await publicFetch('/api/dropshipper/auth/register/start', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/register/create-payment
+   * Full form submission + creates Razorpay order
+   */
   async createRegistrationPayment(body: DropshipperRegisterPayload) {
     const res = await publicFetch('/api/dropshipper/auth/register/create-payment', {
       method: 'POST',
@@ -66,6 +133,10 @@ export const dropshipperAuthService = {
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/register/verify-payment
+   * Verifies Razorpay signature and puts request into admin pending queue
+   */
   async verifyRegistrationPayment(body: {
     requestId: string;
     razorpay_order_id: string;
@@ -79,6 +150,27 @@ export const dropshipperAuthService = {
     return parseJson(res);
   },
 
+  /**
+   * GET /auth/register/status/:requestId?email=&phone=
+   * Polls or retrieves registration approval status
+   */
+  async getRegistrationStatus(
+    requestId: string,
+    query: { email?: string; phone?: string }
+  ): Promise<RegistrationStatusResponse> {
+    const params = new URLSearchParams();
+    if (query.email) params.set('email', query.email.trim());
+    if (query.phone) params.set('phone', query.phone.trim());
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const res = await publicFetch(`/api/dropshipper/auth/register/status/${encodeURIComponent(requestId)}${queryString}`);
+    return parseJson(res);
+  },
+
+  /**
+   * POST /auth/activate/send-otp
+   * Request email OTP after admin approval
+   */
   async sendActivationOtp(body: { email?: string; phone?: string; dropshipperId?: string }) {
     const res = await publicFetch('/api/dropshipper/auth/activate/send-otp', {
       method: 'POST',
@@ -87,6 +179,10 @@ export const dropshipperAuthService = {
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/activate/complete
+   * Submit OTP + create login password (and optional confirmPassword)
+   */
   async completeActivation(body: {
     email?: string;
     phone?: string;
@@ -102,6 +198,10 @@ export const dropshipperAuthService = {
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/login
+   * Dropshipper portal login: email/phone + password -> returns accessToken + refreshToken
+   */
   async login(body: { email?: string; phone?: string; password: string }) {
     const res = await publicFetch('/api/dropshipper/auth/login', {
       method: 'POST',
@@ -110,13 +210,49 @@ export const dropshipperAuthService = {
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/refresh
+   * Public refresh of dropshipper access token
+   */
+  async refreshToken(refreshTokenParam?: string) {
+    const refreshToken =
+      refreshTokenParam ||
+      (typeof window !== 'undefined' ? localStorage.getItem('dropshipper_refresh_token') : null);
+
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const res = await publicFetch('/api/dropshipper/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    });
+    const data = await parseJson(res);
+    if (data?.accessToken) {
+      setAuthToken(data.accessToken);
+    }
+    return data;
+  },
+
+  /**
+   * GET /auth/me
+   * Fetches current dropshipper profile using Bearer JWT
+   */
   async me() {
     const res = await apiFetch('/api/dropshipper/auth/me');
     return parseJson(res);
   },
 
+  /**
+   * POST /auth/logout
+   * Blacklists current Bearer JWT and clears local session
+   */
   async logout() {
-    const res = await apiFetch('/api/dropshipper/auth/logout', { method: 'POST' });
-    return parseJson(res);
+    try {
+      const res = await apiFetch('/api/dropshipper/auth/logout', { method: 'POST' });
+      return await parseJson(res);
+    } finally {
+      clearDropshipperSession();
+    }
   },
 };

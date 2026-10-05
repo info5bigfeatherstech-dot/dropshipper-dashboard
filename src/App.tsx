@@ -9,6 +9,7 @@ import { ServiceabilityPage } from './pages/ServiceabilityPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ActivatePage } from './pages/ActivatePage';
+import { AdminRequestsPage } from './pages/AdminRequestsPage';
 import { getAuthToken, isAuthBypassed } from './lib/api';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -50,6 +51,8 @@ export const App: React.FC = () => {
         />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/activate" element={<ActivatePage />} />
+        <Route path="/admin" element={<Navigate to="/admin/requests" replace />} />
+        <Route path="/admin/requests" element={<AdminRequestsPage />} />
 
         <Route
           path="/"
