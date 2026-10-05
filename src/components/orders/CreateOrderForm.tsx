@@ -80,10 +80,9 @@ export const CreateOrderForm: React.FC = () => {
     addToast
   } = useStore();
 
-  // Multi-product order state
+  // Multi-product order state - starts empty unless explicitly passed via selectedProductForCreate
   const [orderItems, setOrderItems] = useState<SelectedOrderItem[]>(() => {
-    const initial = selectedProductForCreate || (products.length > 0 ? products[0] : null);
-    return initial ? [{ product: initial, quantity: 1 }] : [];
+    return selectedProductForCreate ? [{ product: selectedProductForCreate, quantity: 1 }] : [];
   });
 
   // Product search & SKU input state
@@ -139,8 +138,10 @@ export const CreateOrderForm: React.FC = () => {
         if (exists) return prev;
         return [...prev, { product: selectedProductForCreate, quantity: 1 }];
       });
+      // Clear from store so it does not persist on subsequent visits
+      setSelectedProductForCreate(null);
     }
-  }, [selectedProductForCreate]);
+  }, [selectedProductForCreate, setSelectedProductForCreate]);
 
   // Load real catalog products if not yet loaded in store
   useEffect(() => {
@@ -148,13 +149,6 @@ export const CreateOrderForm: React.FC = () => {
       productsService.getProducts();
     }
   }, [products.length]);
-
-  // If order items were empty and products just loaded, select the first real product
-  useEffect(() => {
-    if (orderItems.length === 0 && !selectedProductForCreate && products.length > 0) {
-      setOrderItems([{ product: products[0], quantity: 1 }]);
-    }
-  }, [products, orderItems.length, selectedProductForCreate]);
 
   // ── Debounced POST /orders/quote ─────────────────────────────
   // Fires 600ms after items or pincode change if pincode is a valid 6-digit code.
@@ -618,7 +612,7 @@ export const CreateOrderForm: React.FC = () => {
   const handleResetForm = () => {
     setSubmittedOrder(null);
     setSelectedProductForCreate(null);
-    setOrderItems(products.length > 0 ? [{ product: products[0], quantity: 1 }] : []);
+    setOrderItems([]);
     setSearchNameQuery('');
     setProductCodeQuery('');
     setCustomerName('');
