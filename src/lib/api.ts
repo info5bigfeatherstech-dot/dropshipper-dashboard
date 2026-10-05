@@ -1,33 +1,73 @@
+/** Dropshipper portal auth token only — not admin/staff JWT. */
+const ACCESS_TOKEN_KEY = 'dropshipper_access_token';
+const REFRESH_TOKEN_KEY = 'dropshipper_refresh_token';
+const USER_KEY = 'dropshipper_user';
+
 export const getAuthToken = (): string => {
   if (typeof window === 'undefined') return '';
-  return (
-    localStorage.getItem('token') ||
-    localStorage.getItem('dropshipper_staff_token') ||
-    (import.meta.env.VITE_DROPSHIPPER_STAFF_TOKEN as string) ||
-    ''
-  );
+  // Real dropshipper session first
+  const portalToken = localStorage.getItem(ACCESS_TOKEN_KEY) || localStorage.getItem('token');
+  if (portalToken) return portalToken;
+
+  // Dev bypass only — never treat staff JWT as a dropshipper login
+  if (isAuthBypassed()) {
+    return (
+      localStorage.getItem('dropshipper_staff_token') ||
+      (import.meta.env.VITE_DROPSHIPPER_STAFF_TOKEN as string) ||
+      ''
+    );
+  }
+  return '';
 };
 
 export const setAuthToken = (token: string): void => {
   if (typeof window === 'undefined') return;
   if (token) {
     const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
+    localStorage.setItem(ACCESS_TOKEN_KEY, cleanToken);
     localStorage.setItem('token', cleanToken);
-    localStorage.setItem('dropshipper_staff_token', cleanToken);
   } else {
-    localStorage.removeItem('token');
-    localStorage.removeItem('dropshipper_staff_token');
-    localStorage.removeItem('user');
+    clearDropshipperSession();
   }
 };
 
+export const setDropshipperSession = (payload: {
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  dropshipper?: unknown;
+  user?: unknown;
+}): void => {
+  if (typeof window === 'undefined') return;
+  if (payload.accessToken) {
+    setAuthToken(String(payload.accessToken));
+  }
+  if (payload.refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, String(payload.refreshToken));
+  }
+  const profile = payload.dropshipper || payload.user;
+  if (profile) {
+    localStorage.setItem(USER_KEY, JSON.stringify(profile));
+    localStorage.setItem('user', JSON.stringify(profile));
+  }
+};
+
+export const clearDropshipperSession = (): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  // Do not clear staff bypass helpers — those are env/local-dev only
+};
+
 export const isAuthBypassed = (): boolean => {
-  return import.meta.env.VITE_DROPSHIPPER_AUTH_BYPASS === 'true';
+  return String(import.meta.env.VITE_DROPSHIPPER_AUTH_BYPASS || '').toLowerCase() === 'true';
 };
 
 /**
- * Standard fetch wrapper that automatically attaches the Staff / Admin Bearer token
- * to every request.
+ * Standard fetch wrapper. Attaches dropshipper Bearer only when a portal session exists
+ * (or bypass staff token when DROPSHIPPER_AUTH_BYPASS=true).
  */
 export async function apiFetch(
   url: string,
@@ -43,7 +83,6 @@ export async function apiFetch(
     headers.set('Accept', 'application/json');
   }
 
-  // Attach Bearer token if present
   if (token) {
     headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
   }
@@ -51,6 +90,6 @@ export async function apiFetch(
   return fetch(url, {
     ...options,
     headers,
-    credentials: options.credentials || 'include'
+    credentials: options.credentials || 'include',
   });
 }

@@ -7,6 +7,8 @@ import { OrdersPage } from './pages/OrdersPage';
 import { CreateOrderPage } from './pages/CreateOrderPage';
 import { ServiceabilityPage } from './pages/ServiceabilityPage';
 import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { ActivatePage } from './pages/ActivatePage';
 import { getAuthToken, isAuthBypassed } from './lib/api';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -15,7 +17,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
   }
   const token = getAuthToken();
-  
+
   if (!token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
@@ -23,12 +25,13 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  // Even with bypass, allow seeing login/activate pages (do not force panel)
   if (isAuthBypassed()) {
-    return <Navigate to="/" replace />;
+    return <>{children}</>;
   }
   const token = getAuthToken();
   if (token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/products" replace />;
   }
   return <>{children}</>;
 };
@@ -45,12 +48,17 @@ export const App: React.FC = () => {
             </PublicRoute>
           }
         />
-        
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }>
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/activate" element={<ActivatePage />} />
+
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Navigate to="/products" replace />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="products/:id" element={<ProductDetailPage />} />
