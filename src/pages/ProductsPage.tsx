@@ -58,7 +58,9 @@ export const ProductsPage: React.FC = () => {
           })
         ]);
         if (isMounted) {
-          setCategories(cats);
+          const prodCats = Array.from(new Set(prods.map(p => typeof p.category === 'object' ? (p.category as any)?.name : p.category).filter(Boolean)));
+          const merged = Array.from(new Set(['all', ...cats.filter(c => c !== 'all'), ...prodCats]));
+          setCategories(merged as string[]);
           setProducts(prods);
         }
       } catch (err) {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { Order, OrderStatus } from '../types';
@@ -7,12 +7,11 @@ import { StatCard } from '../components/common/StatCard';
 import { EmptyState } from '../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { downloadOrderPDF, downloadOrderCSV } from '../utils/exportUtils';
-import { Tabs, TabItem } from '../components/common/Tabs';
-import { AddressServiceabilityChecker } from '../components/shipping/AddressServiceabilityChecker';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Card } from '../components/ui/card';
+import { ordersService } from '../services/ordersService';
 import {
   Select,
   SelectContent,
@@ -50,37 +49,24 @@ import {
   MoreHorizontal,
   Download,
   Copy,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
-export interface OrdersPageProps {
-  initialTab?: 'orders' | 'serviceability';
-}
-
-export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
+export const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const {
-    orders,
     setSelectedOrderForDetail,
     addToast
   } = useStore();
 
-  // Search & Filter state for All Orders table
-  const [activeMainTab, setActiveMainTab] = useState<'orders' | 'serviceability'>(() => {
-    if (initialTab) return initialTab;
-    if (location.pathname === '/orders/serviceability') return 'serviceability';
-    return 'orders';
-  });
-
-  // Keep state in sync with URL
-  React.useEffect(() => {
-    if (location.pathname === '/orders/serviceability') {
-      setActiveMainTab('serviceability');
-    } else if (location.pathname === '/orders') {
-      setActiveMainTab('orders');
-    }
-  }, [location.pathname]);
+  // ── Live API state ──────────────────────────────────────────
+  const [apiOrders, setApiOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [apiTotal, setApiTotal] = useState(0);
+  const [apiTotalPages, setApiTotalPages] = useState(1);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
@@ -88,17 +74,41 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 7;
 
-  // Stat calculations
-  const totalOrdersCount = orders.length;
-  const pendingCount = orders.filter((o) => o.status === 'pending').length;
-  const approvedCount = orders.filter((o) => o.status === 'approved').length;
-  const shippedOrDeliveredCount = orders.filter(
+  // ── Fetch orders from GET /orders?page&limit ────────────────
+  const fetchOrders = useCallback(async (page: number, silent = false) => {
+    if (!silent) setIsLoading(true);
+    else setIsRefreshing(true);
+    try {
+      const result = await ordersService.getOrders({ page, limit: pageSize });
+      setApiOrders(result.orders);
+      setApiTotal(result.total);
+      setApiTotalPages(result.totalPages);
+    } catch (err) {
+      console.error('Failed to load orders:', err);
+      addToast({ type: 'error', title: 'Failed to Load Orders', message: 'Could not fetch orders from server.' });
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [pageSize]);
+
+  useEffect(() => {
+    fetchOrders(currentPage);
+  }, [currentPage]);
+
+  // ── Stat calculations ───────────────────────────────────────
+  // Stats are computed from all currently loaded orders (server-side we'd need separate counts;
+  // here we use the current page's data as an approximation + the API total).
+  const totalOrdersCount = apiTotal;
+  const pendingCount = apiOrders.filter((o) => o.status === 'pending').length;
+  const approvedCount = apiOrders.filter((o) => o.status === 'approved').length;
+  const shippedOrDeliveredCount = apiOrders.filter(
     (o) => o.status === 'shipped' || o.status === 'delivered'
   ).length;
 
-  // Filtered orders
+  // ── Client-side filter on top of fetched page ───────────────
   const filteredOrders = useMemo(() => {
-    let result = [...orders];
+    let result = [...apiOrders];
 
     if (search.trim()) {
       const q = search.toLowerCase().trim();
@@ -120,29 +130,21 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
       const now = new Date().getTime();
       const oneDay = 24 * 60 * 60 * 1000;
       if (dateRange === 'today') {
-        result = result.filter(
-          (o) => now - new Date(o.createdAt).getTime() <= oneDay
-        );
+        result = result.filter((o) => now - new Date(o.createdAt).getTime() <= oneDay);
       } else if (dateRange === '7days') {
-        result = result.filter(
-          (o) => now - new Date(o.createdAt).getTime() <= 7 * oneDay
-        );
+        result = result.filter((o) => now - new Date(o.createdAt).getTime() <= 7 * oneDay);
       } else if (dateRange === '30days') {
-        result = result.filter(
-          (o) => now - new Date(o.createdAt).getTime() <= 30 * oneDay
-        );
+        result = result.filter((o) => now - new Date(o.createdAt).getTime() <= 30 * oneDay);
       }
     }
 
     return result;
-  }, [orders, search, statusFilter, dateRange]);
+  }, [apiOrders, search, statusFilter, dateRange]);
 
-  // Pagination calculation
-  const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredOrders.slice(start, start + pageSize);
-  }, [filteredOrders, currentPage]);
+  // Use server pagination; show filtered count when filters are active
+  const isFiltered = search.trim() || statusFilter !== 'all' || dateRange !== 'all';
+  const paginatedOrders = isFiltered ? filteredOrders : apiOrders;
+  const totalPages = isFiltered ? Math.ceil(filteredOrders.length / pageSize) || 1 : apiTotalPages;
 
   const handleQuickDownloadPDF = (e: React.MouseEvent, order: Order) => {
     e.stopPropagation();
@@ -198,8 +200,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header with shadcn Button and Badge */}
+    <div className="space-y-5">
+      {/* Header with action buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
@@ -215,9 +217,31 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
           </p>
         </div>
 
-        {/* Action Buttons via shadcn DropdownMenu & Button */}
+        {/* Action Buttons */}
         <div className="flex items-center gap-2.5">
-          {/* shadcn DropdownMenu for Batch Actions & Exports */}
+          {/* Refresh Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchOrders(currentPage, true)}
+            disabled={isRefreshing}
+            className="rounded-xl shadow-xs gap-1.5 text-xs font-semibold text-slate-700"
+            title="Refresh orders"
+          >
+            {isRefreshing
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5" />}
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate('/orders/serviceability')}
+            className="rounded-xl shadow-xs gap-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:border-indigo-200"
+          >
+            <Truck className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Check Serviceability</span>
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-xl shadow-xs gap-1.5 text-xs font-semibold text-slate-700">
@@ -278,37 +302,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
         </div>
       </div>
 
-      {/* Primary Section Tabs */}
-      <div className="flex items-center">
-        <Tabs
-          tabs={[
-            {
-              id: 'orders',
-              label: 'All Orders',
-              count: totalOrdersCount,
-              icon: <ShoppingBag className="w-4 h-4" />
-            },
-            {
-              id: 'serviceability',
-              label: 'Check Serviceability & Rates',
-              icon: <Truck className="w-4 h-4" />
-            }
-          ]}
-          activeTab={activeMainTab}
-          onChange={(tabId) => {
-            const next = tabId as 'orders' | 'serviceability';
-            setActiveMainTab(next);
-            navigate(next === 'serviceability' ? '/orders/serviceability' : '/orders');
-          }}
-        />
-      </div>
-
-      {activeMainTab === 'serviceability' ? (
-        <AddressServiceabilityChecker />
-      ) : (
-        <>
-          {/* Stat Cards Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Stat Cards Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Orders"
           value={totalOrdersCount}
@@ -459,7 +454,31 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
 
       {/* Orders Data Table using shadcn Table, Card, and DropdownMenu */}
       <Card className="shadow-soft overflow-hidden">
-        {filteredOrders.length === 0 ? (
+        {isLoading ? (
+          // Loading skeleton
+          <div className="divide-y divide-slate-100">
+            {Array.from({ length: pageSize }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-6 py-4 animate-pulse">
+                <div className="w-24 h-4 bg-slate-200 rounded" />
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="w-10 h-10 bg-slate-200 rounded-xl shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="w-48 h-3.5 bg-slate-200 rounded" />
+                    <div className="w-24 h-3 bg-slate-100 rounded" />
+                  </div>
+                </div>
+                <div className="w-28 h-3 bg-slate-200 rounded hidden md:block" />
+                <div className="w-20 h-3 bg-slate-100 rounded hidden sm:block" />
+                <div className="w-16 h-4 bg-slate-200 rounded" />
+                <div className="w-20 h-6 bg-slate-200 rounded-lg" />
+                <div className="flex gap-1.5">
+                  <div className="w-8 h-8 bg-slate-100 rounded-lg" />
+                  <div className="w-8 h-8 bg-slate-100 rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : paginatedOrders.length === 0 ? (
           <EmptyState
             title="No Orders Found"
             description="We couldn't find any orders matching your search or filters. You can create a new order anytime."
@@ -620,18 +639,19 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
               <div>
                 Showing{' '}
                 <span className="font-semibold text-slate-700">
-                  {Math.min(
-                    (currentPage - 1) * pageSize + 1,
-                    filteredOrders.length
-                  )}
+                  {isFiltered
+                    ? Math.min((currentPage - 1) * pageSize + 1, filteredOrders.length)
+                    : Math.min((currentPage - 1) * pageSize + 1, apiTotal)}
                 </span>{' '}
                 to{' '}
                 <span className="font-semibold text-slate-700">
-                  {Math.min(currentPage * pageSize, filteredOrders.length)}
+                  {isFiltered
+                    ? Math.min(currentPage * pageSize, filteredOrders.length)
+                    : Math.min(currentPage * pageSize, apiTotal)}
                 </span>{' '}
                 of{' '}
                 <span className="font-semibold text-slate-700">
-                  {filteredOrders.length}
+                  {isFiltered ? filteredOrders.length : apiTotal}
                 </span>{' '}
                 orders
               </div>
@@ -640,8 +660,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
+                  onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); }}
+                  disabled={currentPage === 1 || isLoading}
                   className="h-8 w-8 p-0"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -665,8 +685,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ initialTab }) => {
           </>
         )}
       </Card>
-        </>
-      )}
     </div>
   );
 };

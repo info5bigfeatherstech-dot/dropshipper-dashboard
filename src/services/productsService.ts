@@ -1,6 +1,7 @@
-import { Product, SortOption } from '../types';
-import { mockProducts } from '../data/mockProducts';
+import { Product, SortOption, ProductSpecs } from '../types';
 import { apiFetch } from '../lib/api';
+import { useStore } from '../store/useStore';
+import { mockProducts } from '../data/mockProducts';
 
 export interface ProductFilterParams {
   page?: number;
@@ -10,7 +11,7 @@ export interface ProductFilterParams {
   categoryId?: string;
   category?: string;
   inStockOnly?: boolean;
-  sort?: SortOption | 'newest' | 'name_asc' | 'price_asc' | 'price_desc';
+  sort?: SortOption | 'newest' | 'name_asc' | 'price_asc' | 'price_desc' | 'margin_desc';
   stockStatus?: string;
 }
 
@@ -33,68 +34,272 @@ export interface DownloadPackResponse {
   description: string;
 }
 
+/**
+ * Normalizes any backend or raw catalog payload into a type-safe Product object
+ * that will never cause React render errors (e.g. objects as React children, undefined specs).
+ */
+export function normalizeProduct(raw: any): Product {
+  if (!raw) return {} as Product;
+
+  const variants = Array.isArray(raw.variants) ? raw.variants : [];
+  const primaryVariant = variants[0] || {};
+
+  // Extract category string safely
+  let categoryName = 'General';
+  let categoryId = '';
+
+  if (typeof raw.category === 'object' && raw.category !== null) {
+    categoryName = raw.category.name || raw.category.slug || 'General';
+    categoryId = raw.category.id || raw.category._id || '';
+  } else if (typeof raw.category === 'string' && raw.category.trim()) {
+    categoryName = raw.category.trim();
+    categoryId = raw.categoryId || '';
+  } else if (typeof primaryVariant.category === 'object' && primaryVariant.category !== null) {
+    categoryName = primaryVariant.category.name || primaryVariant.category.slug || 'General';
+    categoryId = primaryVariant.category.id || primaryVariant.category._id || '';
+  } else if (typeof primaryVariant.category === 'string' && primaryVariant.category.trim()) {
+    categoryName = primaryVariant.category.trim();
+  }
+
+  // SKU
+  const sku =
+    raw.sku ||
+    primaryVariant.sku ||
+    primaryVariant.productCode ||
+    raw.productCode ||
+    (raw.id ? `SKU-${String(raw.id).slice(-6).toUpperCase()}` : 'SKU-INVENTORY');
+
+  // Dropship price
+  const dropshipPrice = Number(
+    raw.dropshipPrice ??
+    primaryVariant.dropshipPrice ??
+    raw.dropshipPriceMin ??
+    raw.dropshipPriceMax ??
+    raw.costEstimate ??
+    0
+  );
+
+  // Suggested Retail Price (MSRP)
+  const suggestedRetailPrice = Number(
+    raw.suggestedRetailPrice ??
+    primaryVariant.suggestedRetailPrice ??
+    (dropshipPrice > 0 ? Math.round(dropshipPrice * 1.5) : 0)
+  );
+
+  // Stock & Status
+  const stock = Number(
+    raw.stock ??
+    primaryVariant.quantity ??
+    primaryVariant.stock ??
+    (raw.trackInventory === false ? 999 : 0)
+  );
+
+  let stockStatus = raw.stockStatus || primaryVariant.stockStatus;
+  if (!stockStatus) {
+    if (stock > 5) stockStatus = 'in_stock';
+    else if (stock > 0) stockStatus = 'low_stock';
+    else stockStatus = 'out_of_stock';
+  }
+
+  // Fallback image
+  const fallbackImg =
+    'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+
+  const thumbnail =
+    raw.thumbnail ||
+    primaryVariant.thumbnail ||
+    (Array.isArray(primaryVariant.images) && primaryVariant.images[0]) ||
+    (Array.isArray(raw.images) && raw.images[0]) ||
+    fallbackImg;
+
+  let images: string[] = [];
+  if (Array.isArray(raw.images) && raw.images.length > 0) {
+    images = raw.images;
+  } else if (Array.isArray(primaryVariant.images) && primaryVariant.images.length > 0) {
+    images = primaryVariant.images;
+  } else if (Array.isArray(primaryVariant.imageDetails) && primaryVariant.imageDetails.length > 0) {
+    images = primaryVariant.imageDetails
+      .map((img: any) => (typeof img === 'string' ? img : img?.url))
+      .filter(Boolean);
+  }
+  if (images.length === 0) {
+    images = [thumbnail];
+  }
+
+  // Shipping Specs
+  const shippingInfo =
+    primaryVariant.shipping || raw.shipping || primaryVariant.downloadPack?.shipping;
+  const weightKg = shippingInfo?.weightKg ?? shippingInfo?.weight;
+  const lengthCm = shippingInfo?.lengthCm ?? shippingInfo?.dimensions?.length;
+  const widthCm = shippingInfo?.widthCm ?? shippingInfo?.dimensions?.width;
+  const heightCm = shippingInfo?.heightCm ?? shippingInfo?.dimensions?.height;
+
+  const weightStr =
+    weightKg != null
+      ? `${weightKg}kg`
+      : raw.specs?.weight || '0.5kg';
+  const dimensionsStr =
+    lengthCm != null && widthCm != null && heightCm != null
+      ? `${lengthCm} x ${widthCm} x ${heightCm} cm`
+      : raw.specs?.dimensions || '15 x 10 x 5 cm';
+
+  const specs: ProductSpecs = {
+    weight: weightStr,
+    dimensions: dimensionsStr,
+    material: raw.specs?.material || 'Supplier Assured Grade',
+    origin: raw.specs?.origin || 'India',
+    fulfillmentTime: raw.specs?.fulfillmentTime || '24-48 Hours',
+    warranty: raw.specs?.warranty || 'Supplier Assured'
+  };
+
+  const id = String(raw.id || raw._id || primaryVariant.productId || '');
+  const slug = raw.slug || primaryVariant.productSlug || id;
+  const name =
+    raw.name ||
+    raw.title ||
+    primaryVariant.productName ||
+    primaryVariant.title ||
+    'Untitled Product';
+  const description =
+    raw.description ||
+    primaryVariant.description ||
+    raw.title ||
+    primaryVariant.title ||
+    'Supplier verified dropship inventory.';
+
+  const features =
+    Array.isArray(raw.features) && raw.features.length > 0
+      ? raw.features
+      : [
+          'Factory Direct Dropship Pricing',
+          'Verified Express Courier Dispatch',
+          'Commercial Packaging & Protection',
+          'Fast Dispatch from Warehouse'
+        ];
+
+  const tags =
+    Array.isArray(raw.tags) && raw.tags.length > 0
+      ? raw.tags
+      : [categoryName.toLowerCase(), 'dropship', 'wholesale'];
+
+  return {
+    id,
+    _id: id,
+    slug,
+    name,
+    sku,
+    category: categoryName,
+    categoryId,
+    dropshipPrice,
+    suggestedRetailPrice,
+    costEstimate: Number(raw.costEstimate || dropshipPrice),
+    stock,
+    stockStatus,
+    images,
+    thumbnail,
+    description,
+    features,
+    specs,
+    tags,
+    rating: Number(raw.rating || 4.8),
+    reviewCount: Number(raw.reviewCount || 18),
+    createdAt: raw.createdAt || primaryVariant.createdAt || new Date().toISOString()
+  };
+}
+
 export const productsService = {
   /**
-   * Fetch all products from /api/dropshipper/catalog/products
-   * Supported query params: page, limit, q, categoryId, inStockOnly, sort
-   * Falls back to mockProducts if API endpoint is not yet mounted in dev
+   * Fetch dropshipping products from the backend catalog API
+   * Normalizes every product and provides safe fallback
    */
   async getProducts(params?: ProductFilterParams): Promise<Product[]> {
     const query = new URLSearchParams();
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.limit) query.set('limit', String(params.limit));
-    if (params?.q || params?.search) query.set('q', (params.q || params.search)!.trim());
-    if (params?.categoryId || (params?.category && params.category !== 'all')) {
-      query.set('categoryId', (params.categoryId || params.category)!);
+
+    // Page & Limit
+    query.set('page', String(params?.page || 1));
+    query.set('limit', String(params?.limit || 50));
+
+    // Search query
+    const searchQuery = (params?.q || params?.search)?.trim();
+    if (searchQuery) {
+      query.set('q', searchQuery);
     }
-    if (params?.inStockOnly) query.set('inStockOnly', 'true');
-    if (params?.sort) query.set('sort', params.sort);
+
+    // Only pass categoryId to backend if it is a 24-character hexadecimal ObjectId
+    const categoryParam = params?.categoryId || params?.category;
+    const isObjectId = typeof categoryParam === 'string' && /^[0-9a-fA-F]{24}$/.test(categoryParam);
+    if (isObjectId) {
+      query.set('categoryId', categoryParam);
+    }
+
+    // Stock availability
+    if (params?.inStockOnly || params?.stockStatus === 'in_stock') {
+      query.set('inStockOnly', 'true');
+    }
+
+    // Sort order
+    if (params?.sort) {
+      query.set('sort', params.sort);
+    }
+
+    const queryString = query.toString();
+    const primaryUrl = `/catalog/products?${queryString}`;
+    const fallbackUrl = `/api/dropshipper/catalog/products?${queryString}`;
+
+    let rawList: any[] = [];
 
     try {
-      const response = await apiFetch(`/api/dropshipper/catalog/products?${query.toString()}`);
+      let response = await apiFetch(primaryUrl);
+      if (!response.ok) {
+        response = await apiFetch(fallbackUrl);
+      }
+
       if (response.ok) {
         const data = await response.json();
-        const items = Array.isArray(data) ? data : data.products || data.data || [];
-        if (items.length > 0) return items;
+        rawList = Array.isArray(data)
+          ? data
+          : data.products || data.data || [];
+      } else {
+        console.warn('Backend catalog API responded with status:', response.status);
       }
     } catch (err) {
-      console.warn('Backend catalog API offline, falling back to mock catalog', err);
+      console.warn('Failed to fetch from backend catalog API:', err);
     }
 
-    // Local fallback for offline/development mode
-    let results = [...mockProducts];
+    // Normalize fetched products
+    let items: Product[] = rawList.map(normalizeProduct);
 
-    const searchStr = (params?.q || params?.search)?.toLowerCase().trim();
-    if (searchStr) {
-      results = results.filter(
+    // If backend returned nothing (offline or empty DB), fall back to mockProducts
+    if (items.length === 0) {
+      items = mockProducts.map(normalizeProduct);
+    }
+
+    // Client-side category filtering if a name was provided (e.g. "Home & Kitchen")
+    if (categoryParam && categoryParam !== 'all' && !isObjectId) {
+      const lowerCat = categoryParam.toLowerCase();
+      items = items.filter(
         (p) =>
-          p.name.toLowerCase().includes(searchStr) ||
-          p.sku.toLowerCase().includes(searchStr) ||
-          p.category.toLowerCase().includes(searchStr) ||
-          p.tags.some((t) => t.toLowerCase().includes(searchStr))
+          p.category.toLowerCase() === lowerCat ||
+          p.categoryId === categoryParam
       );
     }
 
-    if (params?.category && params.category !== 'all') {
-      results = results.filter(
-        (p) => p.category.toLowerCase() === params.category!.toLowerCase()
-      );
-    }
-
+    // Client-side stock status filtering if needed
     if (params?.stockStatus && params.stockStatus !== 'all') {
-      results = results.filter((p) => p.stockStatus === params.stockStatus);
+      items = items.filter((p) => p.stockStatus === params.stockStatus);
     }
 
+    // Client-side sorting fallback
     if (params?.sort) {
       switch (params.sort) {
         case 'price_asc':
-          results.sort((a, b) => a.dropshipPrice - b.dropshipPrice);
+          items.sort((a, b) => a.dropshipPrice - b.dropshipPrice);
           break;
         case 'price_desc':
-          results.sort((a, b) => b.dropshipPrice - a.dropshipPrice);
+          items.sort((a, b) => b.dropshipPrice - a.dropshipPrice);
           break;
         case 'margin_desc':
-          results.sort(
+          items.sort(
             (a, b) =>
               b.suggestedRetailPrice -
               b.dropshipPrice -
@@ -102,11 +307,11 @@ export const productsService = {
           );
           break;
         case 'name_asc':
-          results.sort((a, b) => a.name.localeCompare(b.name));
+          items.sort((a, b) => a.name.localeCompare(b.name));
           break;
         case 'newest':
         default:
-          results.sort(
+          items.sort(
             (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
@@ -114,24 +319,50 @@ export const productsService = {
       }
     }
 
-    return results;
+    // Sync normalized products into global store
+    if (items.length > 0) {
+      const storeSetProducts = useStore.getState().setProducts;
+      if (storeSetProducts) {
+        storeSetProducts(items);
+      }
+    }
+
+    return items;
   },
 
   /**
-   * GET /api/dropshipper/catalog/products/:slug
+   * GET /catalog/products/:slug
    */
   async getProductBySlug(slug: string): Promise<Product | null> {
+    if (!slug) return null;
+    const cleanSlug = encodeURIComponent(slug.trim());
     try {
-      const response = await apiFetch(`/api/dropshipper/catalog/products/${slug}`);
+      let response = await apiFetch(`/catalog/products/${cleanSlug}`);
+      if (!response.ok) {
+        response = await apiFetch(`/api/dropshipper/catalog/products/${cleanSlug}`);
+      }
       if (response.ok) {
         const data = await response.json();
-        return data.product || data.data || data;
+        const raw = data.product || data.data || data;
+        if (raw) {
+          return normalizeProduct(raw);
+        }
       }
     } catch (e) {
-      console.warn('Failed to fetch product by slug from backend', e);
+      console.warn('Failed to fetch product by slug from catalog API:', e);
     }
-    const found = mockProducts.find((p) => p.id === slug || p.sku.toLowerCase() === slug.toLowerCase());
-    return found ? { ...found } : null;
+
+    // Fallback search in store products or mockProducts
+    const storeProducts = useStore.getState().products;
+    const pool = storeProducts.length > 0 ? storeProducts : mockProducts;
+    const found = pool.find(
+      (p) =>
+        p.id === slug ||
+        p.slug === slug ||
+        p.sku.toLowerCase() === slug.toLowerCase()
+    );
+
+    return found ? normalizeProduct(found) : null;
   },
 
   /**
@@ -142,41 +373,82 @@ export const productsService = {
   },
 
   /**
-   * GET /api/dropshipper/catalog/variants/:productCode
+   * GET /catalog/variants/:productCode
    */
   async getVariant(productCode: string): Promise<CatalogVariantDetail | null> {
+    if (!productCode) return null;
+    const cleanCode = encodeURIComponent(productCode.trim());
     try {
-      const response = await apiFetch(`/api/dropshipper/catalog/variants/${productCode}`);
+      let response = await apiFetch(`/catalog/variants/${cleanCode}`);
+      if (!response.ok) {
+        response = await apiFetch(`/api/dropshipper/catalog/variants/${cleanCode}`);
+      }
       if (response.ok) {
         const data = await response.json();
         return data.variant || data.data || data;
       }
     } catch (e) {
-      console.warn('Failed to fetch variant details from backend', e);
+      console.warn('Failed to fetch variant details from catalog backend', e);
     }
     return null;
   },
 
   /**
-   * GET /api/dropshipper/catalog/variants/:productCode/download-pack
+   * GET /catalog/variants/:productCode/download-pack
    */
   async getDownloadPack(productCode: string): Promise<DownloadPackResponse | null> {
+    if (!productCode) return null;
+    const cleanCode = encodeURIComponent(productCode.trim());
     try {
-      const response = await apiFetch(`/api/dropshipper/catalog/variants/${productCode}/download-pack`);
+      let response = await apiFetch(`/catalog/variants/${cleanCode}/download-pack`);
+      if (!response.ok) {
+        response = await apiFetch(`/api/dropshipper/catalog/variants/${cleanCode}/download-pack`);
+      }
       if (response.ok) {
         return await response.json();
       }
     } catch (e) {
-      console.warn('Failed to fetch download-pack from backend', e);
+      console.warn('Failed to fetch download-pack from catalog backend', e);
     }
     return null;
   },
 
   /**
-   * Get unique product categories
+   * Fetches unique product categories
    */
   async getCategories(): Promise<string[]> {
-    const categories = Array.from(new Set(mockProducts.map((p) => p.category)));
-    return ['all', ...categories];
+    try {
+      let response = await apiFetch('/catalog/categories');
+      if (!response.ok) {
+        response = await apiFetch('/api/dropshipper/catalog/categories');
+      }
+      if (response.ok) {
+        const data = await response.json();
+        const list = Array.isArray(data) ? data : data.categories || data.data || [];
+        if (list.length > 0) {
+          const names = list
+            .map((c: any) =>
+              typeof c === 'object' && c !== null ? c.name || c.slug : String(c)
+            )
+            .filter(Boolean);
+          const unique = Array.from(new Set(names));
+          return unique.includes('all') ? unique : ['all', ...unique];
+        }
+      }
+    } catch (e) {
+      console.warn('Backend categories endpoint unavailable, extracting from products:', e);
+    }
+
+    // Extract dynamic categories from active products or mock
+    const storeProducts = useStore.getState().products;
+    const pool = storeProducts.length > 0 ? storeProducts : mockProducts;
+    const names = pool
+      .map((p) =>
+        typeof p.category === 'object' ? (p.category as any)?.name : p.category
+      )
+      .filter((c): c is string => Boolean(c && typeof c === 'string'));
+
+    const uniqueCategories = Array.from(new Set(names));
+    return ['all', ...uniqueCategories];
   }
 };

@@ -111,14 +111,9 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">
-                  Dropshipper Route Serviceability
-                </h3>
-                <Badge variant="outline" className="font-mono text-[10px] text-brand-600 bg-brand-50 border-brand-200">
-                  POST /api/dropshipper/serviceability/check
-                </Badge>
-              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                Dropshipper Route Serviceability
+              </h3>
               <p className="text-xs text-slate-400">
                 Check warehouse to customer courier deliverability, ETA SLA, and shipping rates
               </p>

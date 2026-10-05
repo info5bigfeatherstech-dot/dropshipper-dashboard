@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   serviceabilityService,
@@ -6,8 +6,7 @@ import {
   DEFAULT_WAREHOUSE_PINCODE
 } from '../../services/serviceabilityService';
 import {
-  ServiceabilityCheckResponse,
-  ServiceabilityQuote
+  ServiceabilityCheckResponse
 } from '../../types/dropshipper';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -33,12 +32,27 @@ import {
   ArrowRight,
   ShieldCheck,
   Check,
-  Building,
-  Info
+  Calendar,
+  Sparkles,
+  Navigation
 } from 'lucide-react';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, calculateDeliveryDate } from '../../utils/formatters';
 
-export const AddressServiceabilityChecker: React.FC = () => {
+export interface AddressServiceabilityCheckerProps {
+  showBanner?: boolean;
+}
+
+const QUICK_TEST_PINCODES = [
+  { pincode: '110001', city: 'New Delhi', state: 'Delhi', address: 'Connaught Place' },
+  { pincode: '400001', city: 'Mumbai', state: 'Maharashtra', address: 'Fort, South Mumbai' },
+  { pincode: '560001', city: 'Bangalore', state: 'Karnataka', address: 'MG Road, Central' },
+  { pincode: '700001', city: 'Kolkata', state: 'West Bengal', address: 'BBD Bagh' },
+  { pincode: '600001', city: 'Chennai', state: 'Tamil Nadu', address: 'George Town' }
+];
+
+export const AddressServiceabilityChecker: React.FC<AddressServiceabilityCheckerProps> = ({
+  showBanner = false
+}) => {
   const navigate = useNavigate();
 
   // Form State
@@ -95,9 +109,46 @@ export const AddressServiceabilityChecker: React.FC = () => {
     }
   };
 
+  // Automatically check serviceability with debounce whenever a valid 6-digit pincode is entered
+  useEffect(() => {
+    const cleanPin = customerPincode.trim();
+    if (/^\d{6}$/.test(cleanPin)) {
+      const timer = setTimeout(() => {
+        handleCheckServiceability();
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      if (cleanPin.length === 0) {
+        setResult(null);
+        setErrorMsg(null);
+      }
+    }
+  }, [customerPincode, warehousePincode, weightKg, lengthCm, widthCm, heightCm, orderAmount]);
+
+  const handleQuickFill = (preset: typeof QUICK_TEST_PINCODES[0]) => {
+    setCustomerPincode(preset.pincode);
+    setCity(preset.city);
+    setStateName(preset.state);
+    if (!addressLine) setAddressLine(preset.address);
+  };
+
   const isDeliverable = result?.isDeliverable;
   const prepaidQuote = result?.quotes?.prepaid;
   const codQuote = result?.quotes?.cod;
+  const selectedQuote = selectedQuoteType === 'prepaid' ? prepaidQuote : codQuote;
+  const estimatedDays = result?.estimatedDays || selectedQuote?.estimatedDays || '3 Days';
+  const expectedDeliveryDate = calculateDeliveryDate(estimatedDays);
+
+  const selectedWarehouse = WAREHOUSE_HUBS.find((h) => h.pincode === warehousePincode);
+
+  const fullAddressString = [
+    addressLine.trim(),
+    city.trim(),
+    stateName.trim(),
+    customerPincode.trim() ? `PIN: ${customerPincode.trim()}` : ''
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const handleProceedToCreateOrder = () => {
     navigate('/orders/create', {
@@ -114,38 +165,40 @@ export const AddressServiceabilityChecker: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-5">
       {/* Informative Header Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-xs">
-              <Truck className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Customer Location & Serviceability Checker
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Check carrier delivery availability, calculate exact freight costs & compare Prepaid vs COD before placing orders.
-              </p>
+      {showBanner && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 shadow-xs">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Customer Location & Serviceability Checker
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Check whether the product can be delivered to the customer address and view estimated delivery days.
+                </p>
+              </div>
             </div>
           </div>
-          <Badge variant="outline" className="self-start sm:self-auto bg-slate-50 text-slate-700 text-xs px-3 py-1 font-mono">
-            POST /api/dropshipper/serviceability/check
-          </Badge>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
         {/* Left Column: Input Form (Customer Address + Warehouse Specs) */}
-        <div className="lg:col-span-6 space-y-5">
-          <Card className="p-5 border-slate-200/90 shadow-xs space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <MapPin className="w-4 h-4 text-indigo-600" />
-              <h4 className="text-sm font-bold text-slate-900">
-                1. Customer Delivery Location
-              </h4>
+        <div className="lg:col-span-6 space-y-4">
+          <Card className="p-4 sm:p-5 border-slate-200/90 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-sm font-bold text-slate-900">
+                  1. Customer Delivery Location
+                </h4>
+              </div>
+              <span className="text-[11px] font-medium text-slate-400">Step 1 of 2</span>
             </div>
 
             <div className="space-y-3">
@@ -202,15 +255,40 @@ export const AddressServiceabilityChecker: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Live Deliverability Pill under Pincode */}
+              <div className="pt-0.5">
+                {isLoading && (
+                  <div className="inline-flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Checking courier deliverability for pincode {customerPincode}...</span>
+                  </div>
+                )}
+                {!isLoading && result && isDeliverable && (
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Delivery Available • Est. Delivery in {estimatedDays}</span>
+                  </div>
+                )}
+                {!isLoading && result && !isDeliverable && (
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
+                    <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>Delivery Not Available to Pincode {customerPincode}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
 
-          <Card className="p-5 border-slate-200/90 shadow-xs space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Package className="w-4 h-4 text-indigo-600" />
-              <h4 className="text-sm font-bold text-slate-900">
-                2. Warehouse & Package Specifications
-              </h4>
+          <Card className="p-4 sm:p-5 border-slate-200/90 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-sm font-bold text-slate-900">
+                  2. Warehouse & Package Specifications
+                </h4>
+              </div>
+              <span className="text-[11px] font-medium text-slate-400">Step 2 of 2</span>
             </div>
 
             <div className="space-y-3">
@@ -321,68 +399,189 @@ export const AddressServiceabilityChecker: React.FC = () => {
           </Card>
         </div>
 
-        {/* Right Column: Live Rates & Deliverability Comparison */}
-        <div className="lg:col-span-6 space-y-4">
+        {/* Right Column: Live Deliverability Status & Estimated Days */}
+        <div className="lg:col-span-6 flex flex-col space-y-4">
           {!result && !isLoading && (
-            <Card className="p-8 border-dashed border-2 border-slate-200/90 text-center space-y-3 bg-slate-50/50">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mx-auto">
-                <Building className="w-6 h-6" />
+            <Card className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 border-dashed border-2 border-slate-200/90 text-center space-y-4 bg-slate-50/50 min-h-[380px]">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                <Navigation className="w-7 h-7" />
               </div>
-              <h4 className="text-sm font-bold text-slate-800">
-                Ready to Check Serviceability
-              </h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Fill in the customer delivery pincode and package details on the left, then click <strong>"Check Location Serviceability"</strong> to view real-time courier quotes and transit times.
-              </p>
+              <div>
+                <h4 className="text-base font-bold text-slate-900">
+                  Check Delivery Availability & Estimated Days
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
+                  Enter the customer delivery address and 6-digit destination pincode on the left to verify courier deliverability and calculate the exact estimated delivery days.
+                </p>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="pt-2 w-full max-w-md">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+                  Quick Test Common Pincodes:
+                </span>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {QUICK_TEST_PINCODES.map((preset) => (
+                    <button
+                      key={preset.pincode}
+                      type="button"
+                      onClick={() => handleQuickFill(preset)}
+                      className="text-xs px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 font-medium text-slate-700 transition-all shadow-xs"
+                    >
+                      {preset.pincode} ({preset.city})
+                    </button>
+                  ))}
+                </div>
+              </div>
             </Card>
           )}
 
           {isLoading && (
-            <Card className="p-8 border-slate-200 text-center space-y-3">
-              <RotateCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+            <Card className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 border-slate-200 text-center space-y-3 min-h-[380px]">
+              <RotateCw className="w-9 h-9 text-indigo-600 animate-spin mx-auto" />
               <h4 className="text-sm font-bold text-slate-800">
-                Querying Logistics Network...
+                Checking Deliverability to {customerPincode}...
               </h4>
               <p className="text-xs text-slate-400">
-                Querying Shipmozo rate engine for route {warehousePincode} ➔ {customerPincode}
+                Querying carrier logistics engine for route {warehousePincode} ➔ {customerPincode}
               </p>
             </Card>
           )}
 
           {result && !isLoading && (
             <div className="space-y-4 animate-in fade-in-50">
-              {/* Deliverability Status Header */}
+              {/* Deliverability Status Verdict Card */}
               {isDeliverable ? (
-                <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-4 h-4" />
+                <div className="rounded-2xl border-2 border-emerald-400/80 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/30 p-5 shadow-xs space-y-4">
+                  {/* Top Status Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-100">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                        <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-emerald-950">
+                            Delivery Available to this Address
+                          </h3>
+                          <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-2 uppercase font-mono font-bold">
+                            Serviceable
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 font-medium">
+                          {fullAddressString || `Pincode: ${result.customerPincode}`}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                        <span>Delivery Serviceable to Pincode {result.customerPincode}</span>
-                        <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-1.5 uppercase font-mono">
-                          {result.shippingProvider}
-                        </Badge>
-                      </h4>
-                      <p className="text-[11px] text-emerald-700">
-                        {result.message}
-                      </p>
+
+                    <div className="text-right sm:self-center">
+                      <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full inline-block">
+                        Verified Carrier Route
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 bg-emerald-100/70 px-3 py-1.5 rounded-xl">
-                    <Clock className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Est. Delivery: {result.estimatedDays}</span>
+                  {/* Prominent Estimated Days & ETA Highlight Box */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-white/90 rounded-xl border border-emerald-200/80 shadow-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                        Estimated Delivery
+                      </span>
+                      <div className="text-2xl font-black text-emerald-900 tracking-tight">
+                        {estimatedDays}
+                      </div>
+                      <span className="text-[11px] text-emerald-700 font-medium block">
+                        Standard Courier Transit
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5 sm:border-l sm:border-slate-100 sm:pl-3">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                        Expected Arrival
+                      </span>
+                      <div className="text-lg font-black text-slate-900 tracking-tight">
+                        {expectedDeliveryDate}
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium block">
+                        Direct Doorstep Dispatch
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5 sm:border-l sm:border-slate-100 sm:pl-3">
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                        <Truck className="w-3.5 h-3.5 text-slate-500" />
+                        Courier Partner
+                      </span>
+                      <div className="text-sm font-bold text-slate-900 truncate">
+                        {prepaidQuote?.courierName || result.shippingProvider}
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-medium block">
+                        Surface / Air Express
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Visual Route Progress Timeline */}
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs">
+                    <div className="flex items-center justify-between text-slate-700 font-semibold mb-2">
+                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                        Origin: {selectedWarehouse?.name || warehousePincode}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+                        Destination: {city || 'Customer'} ({result.customerPincode})
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="relative flex items-center justify-between px-2 pt-2">
+                      <div className="absolute left-6 right-6 top-1/2 -translate-y-1/2 h-1 bg-emerald-200 -z-0" />
+                      
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
+                          1
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-medium">Warehouse</span>
+                      </div>
+
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
+                          <Truck className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-medium">In Transit</span>
+                      </div>
+
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
+                          <Check className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-medium">Delivered ({estimatedDays})</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-800">
-                  <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                  <div>
-                    <h4 className="font-bold">Not Serviceable to Pincode {result.customerPincode}</h4>
-                    <p className="text-rose-600 text-[11px] mt-0.5">
-                      {result.message || 'No courier partner is able to fulfill delivery to this destination pincode.'}
+                <div className="p-5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex items-start gap-3.5 text-xs text-rose-900 shadow-xs">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                    <XCircle className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-bold text-rose-950">
+                        Delivery Not Available to this Address
+                      </h4>
+                      <Badge className="bg-rose-600 text-white text-[10px] py-0 px-2 uppercase font-mono">
+                        Not Serviceable
+                      </Badge>
+                    </div>
+                    <p className="text-rose-700 text-xs leading-relaxed">
+                      {result.message || `No courier partner is able to fulfill delivery to destination pincode ${result.customerPincode} from origin warehouse ${warehousePincode}.`}
+                    </p>
+                    <p className="text-[11px] text-rose-600 pt-1 font-medium">
+                      Tip: Please verify the pincode or select a different fulfillment warehouse from the dropdown.
                     </p>
                   </div>
                 </div>
@@ -533,12 +732,13 @@ export const AddressServiceabilityChecker: React.FC = () => {
                       onClick={handleProceedToCreateOrder}
                       className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl gap-2 shadow-xs"
                     >
-                      <span>Create Order for this Location ({selectedQuoteType.toUpperCase()})</span>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Proceed to Create Order for this Address ({selectedQuoteType.toUpperCase()})</span>
                       <ArrowRight className="w-4 h-4" />
                     </Button>
                     <p className="text-[10px] text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Address and verified rates will be transferred directly to Order Fulfillment.</span>
+                      <span>Verified destination address, route, and rate will be transferred directly to Order Fulfillment.</span>
                     </p>
                   </div>
                 </div>
@@ -550,3 +750,5 @@ export const AddressServiceabilityChecker: React.FC = () => {
     </div>
   );
 };
+
+export default AddressServiceabilityChecker;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { Product } from '../../types';
@@ -36,7 +36,8 @@ import {
   Hash,
   Trash2,
   ShoppingBag,
-  PackageSearch
+  PackageSearch,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -46,7 +47,8 @@ import {
 } from '../../types/dropshipper';
 import { ServiceabilityQuotePicker } from '../shipping/ServiceabilityQuotePicker';
 import { DEFAULT_WAREHOUSE_PINCODE } from '../../services/serviceabilityService';
-import { ordersService } from '../../services/ordersService';
+import { ordersService, OrderQuoteResponse } from '../../services/ordersService';
+import { productsService } from '../../services/productsService';
 import { openRazorpayCheckout } from '../../utils/razorpay';
 
 export interface SelectedOrderItem {
@@ -121,6 +123,14 @@ export const CreateOrderForm: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<any | null>(null);
 
+  // ── Live Quote (POST /orders/quote) ───────────────────────────
+  const [liveQuote, setLiveQuote] = useState<OrderQuoteResponse | null>(null);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper: extract bare product code from SKU (e.g. "SKU-2928-1" → "2928-1")
+  const extractProductCode = (sku: string): string => sku.replace(/^SKU-/i, '');
+
   // Sync if pre-selected product changes from store
   useEffect(() => {
     if (selectedProductForCreate) {
@@ -131,6 +141,58 @@ export const CreateOrderForm: React.FC = () => {
       });
     }
   }, [selectedProductForCreate]);
+
+  // Load real catalog products if not yet loaded in store
+  useEffect(() => {
+    if (products.length === 0) {
+      productsService.getProducts();
+    }
+  }, [products.length]);
+
+  // If order items were empty and products just loaded, select the first real product
+  useEffect(() => {
+    if (orderItems.length === 0 && !selectedProductForCreate && products.length > 0) {
+      setOrderItems([{ product: products[0], quantity: 1 }]);
+    }
+  }, [products, orderItems.length, selectedProductForCreate]);
+
+  // ── Debounced POST /orders/quote ─────────────────────────────
+  // Fires 600ms after items or pincode change if pincode is a valid 6-digit code.
+  useEffect(() => {
+    if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current);
+
+    const pincode = postalCode.trim();
+    const hasItems = orderItems.length > 0;
+    const validPin = /^\d{6}$/.test(pincode);
+
+    if (!hasItems || !validPin) {
+      setLiveQuote(null);
+      return;
+    }
+
+    quoteTimerRef.current = setTimeout(async () => {
+      setIsQuoteLoading(true);
+      try {
+        const quotePayload = {
+          items: orderItems.map((it) => ({
+            productCode: extractProductCode(it.product.sku),
+            quantity: it.quantity
+          })),
+          customerPincode: pincode,
+          warehousePincode: warehousePincode
+        };
+        const quote = await ordersService.getOrderQuote(quotePayload);
+        setLiveQuote(quote);
+      } catch (err) {
+        console.warn('Quote fetch failed, using local calculation:', err);
+        setLiveQuote(null);
+      } finally {
+        setIsQuoteLoading(false);
+      }
+    }, 600);
+
+    return () => { if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current); };
+  }, [orderItems, postalCode, warehousePincode]);
 
   // Close search suggestions on click outside
   useEffect(() => {
@@ -150,14 +212,15 @@ export const CreateOrderForm: React.FC = () => {
     const codeQ = productCodeQuery.trim().toLowerCase();
 
     return products.filter((p) => {
+      const catName = typeof p.category === 'object' && p.category !== null ? (p.category as any)?.name || '' : (p.category || '');
       const matchesName =
         !nameQ ||
-        p.name.toLowerCase().includes(nameQ) ||
-        p.category.toLowerCase().includes(nameQ) ||
-        p.tags.some((t) => t.toLowerCase().includes(nameQ));
+        (p.name || '').toLowerCase().includes(nameQ) ||
+        catName.toLowerCase().includes(nameQ) ||
+        (Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(nameQ)));
 
       const matchesCode =
-        !codeQ || p.sku.toLowerCase().includes(codeQ);
+        !codeQ || (p.sku || '').toLowerCase().includes(codeQ);
 
       return matchesName && matchesCode;
     });
@@ -345,7 +408,7 @@ export const CreateOrderForm: React.FC = () => {
       // 1. Prepare backend payload matching POST /api/dropshipper/orders
       const orderPayload = {
         items: orderItems.map((item) => ({
-          productId: item.product.id,
+          productCode: extractProductCode(item.product.sku), // backend needs "2928-1" not "SKU-2928-1"
           sku: item.product.sku,
           quantity: item.quantity
         })),
@@ -364,6 +427,7 @@ export const CreateOrderForm: React.FC = () => {
         },
         customerPincode: postalCode.trim(),
         warehousePincode: warehousePincode,
+        paymentMethod: 'online' as const,
         notes: notes.trim() || undefined
       };
 
@@ -425,7 +489,7 @@ export const CreateOrderForm: React.FC = () => {
             if (backendResponse.orderNumber || backendResponse.orderId) {
               newOrder.orderNumber = backendResponse.orderNumber || backendResponse.orderId;
             }
-            newOrder.status = 'confirmed';
+            newOrder.status = 'approved';
             setSubmittedOrder(newOrder);
 
             try {
@@ -505,7 +569,7 @@ export const CreateOrderForm: React.FC = () => {
             );
 
             newOrder.orderNumber = fallbackOrderId;
-            newOrder.status = 'confirmed';
+            newOrder.status = 'approved';
             setSubmittedOrder(newOrder);
 
             try {
@@ -720,7 +784,7 @@ export const CreateOrderForm: React.FC = () => {
                     <div className="relative">
                       <Input
                         type="text"
-                        placeholder="Search product name (e.g. AeroPulse, Lumina...)"
+                        placeholder="Search product name (e.g. Color Naphthalene Balls, Toothbrush...)"
                         value={searchNameQuery}
                         onChange={(e) => {
                           setSearchNameQuery(e.target.value);
@@ -748,7 +812,7 @@ export const CreateOrderForm: React.FC = () => {
                     <div className="relative">
                       <Input
                         type="text"
-                        placeholder="e.g. AP-ANC-BLK-01"
+                        placeholder="e.g. SKU-2928-1"
                         value={productCodeQuery}
                         onChange={(e) => {
                           setProductCodeQuery(e.target.value);
@@ -929,7 +993,7 @@ export const CreateOrderForm: React.FC = () => {
                                 {item.product.sku}
                               </span>
                               <span className="text-[10px] text-slate-400 capitalize">
-                                {item.product.category}
+                                {typeof item.product.category === 'object' && item.product.category !== null ? (item.product.category as any)?.name : item.product.category}
                               </span>
                             </div>
                             <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">

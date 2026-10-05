@@ -36,12 +36,12 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
-      className={`hidden md:flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 transition-all duration-300 z-30 select-none ${
+      className={`hidden md:flex flex-col h-full min-h-0 shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-800 transition-all duration-300 z-30 select-none ${
         sidebarCollapsed ? 'w-20' : 'w-64'
       }`}
     >
       {/* Brand Header */}
-      <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-slate-800">
+      <div className="h-16 shrink-0 flex items-center justify-between px-5 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-3 overflow-hidden cursor-pointer" onClick={() => navigate('/products')}>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 text-white flex items-center justify-center shadow-soft-indigo shrink-0">
             <Sparkles className="w-5 h-5" />
@@ -73,7 +73,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Navigation Links */}
-      <div className="flex-1 py-5 px-3 space-y-2 overflow-y-auto">
+      <div className="flex-1 min-h-0 py-5 px-3 space-y-2 overflow-y-auto overscroll-contain">
         {!sidebarCollapsed && (
           <p className="px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Main Menu
@@ -94,12 +94,7 @@ export const Sidebar: React.FC = () => {
         >
           <Package className="w-5 h-5 shrink-0 group-hover:scale-105 transition-transform" />
           {!sidebarCollapsed && (
-            <>
-              <span className="flex-1">Products</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 font-normal">
-                14
-              </span>
-            </>
+            <span className="flex-1">Products</span>
           )}
         </NavLink>
 
@@ -232,7 +227,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Footer Info Box */}
       {!sidebarCollapsed && (
-        <div className="p-4 m-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+        <div className="p-4 m-3 shrink-0 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2 mb-1.5">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">

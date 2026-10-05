@@ -35,18 +35,18 @@ export const Layout: React.FC = () => {
   }, [setSelectedOrderForDetail]);
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
+    <div className="flex h-screen w-full bg-[#F8FAFC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
       {/* Collapsible Left Sidebar */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Sticky Top Bar */}
         <TopBar />
 
         {/* Scrollable Content Container */}
-        <main className="flex-1 overflow-y-auto pb-20 md:pb-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-6 overscroll-contain">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
             <Outlet />
           </div>
         </main>
