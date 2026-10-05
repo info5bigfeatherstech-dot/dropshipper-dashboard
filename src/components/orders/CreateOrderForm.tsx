@@ -61,6 +61,8 @@ interface FormErrors {
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
+  buildingNo?: string;
+  streetName?: string;
   line1?: string;
   city?: string;
   state?: string;
@@ -77,6 +79,7 @@ export const CreateOrderForm: React.FC = () => {
     selectedProductForCreate,
     setSelectedProductForCreate,
     createOrder,
+    setActiveOrderTab,
     addToast
   } = useStore();
 
@@ -85,9 +88,8 @@ export const CreateOrderForm: React.FC = () => {
     return selectedProductForCreate ? [{ product: selectedProductForCreate, quantity: 1 }] : [];
   });
 
-  // Product search & SKU input state
-  const [searchNameQuery, setSearchNameQuery] = useState('');
-  const [productCodeQuery, setProductCodeQuery] = useState('');
+  // Single unified product search state
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -100,8 +102,9 @@ export const CreateOrderForm: React.FC = () => {
   const prefill = (location.state as any) || {};
 
   // Address state (prefilled only if navigated from Serviceability tab)
-  const [line1, setLine1] = useState(() => prefill.prefillAddress || '');
-  const [line2, setLine2] = useState('');
+  const [buildingNo, setBuildingNo] = useState(() => prefill.prefillBuilding || prefill.prefillAddress || '');
+  const [streetName, setStreetName] = useState(() => prefill.prefillStreet || '');
+  const [landmark, setLandmark] = useState(() => prefill.prefillLandmark || '');
   const [city, setCity] = useState(() => prefill.prefillCity || '');
   const [state, setState] = useState(() => prefill.prefillState || '');
   const [postalCode, setPostalCode] = useState(() => prefill.prefillPincode || '');
@@ -200,25 +203,29 @@ export const CreateOrderForm: React.FC = () => {
   }, []);
 
 
-  // Filter products by Name or Product Code (SKU)
+  // Filter products by Name, Product Code, or SKU
   const filteredProducts = useMemo(() => {
-    const nameQ = searchNameQuery.trim().toLowerCase();
-    const codeQ = productCodeQuery.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const cleanQ = q.replace(/^sku-?/i, '');
 
     return products.filter((p) => {
       const catName = typeof p.category === 'object' && p.category !== null ? (p.category as any)?.name || '' : (p.category || '');
       const matchesName =
-        !nameQ ||
-        (p.name || '').toLowerCase().includes(nameQ) ||
-        catName.toLowerCase().includes(nameQ) ||
-        (Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(nameQ)));
+        (p.name || '').toLowerCase().includes(q) ||
+        catName.toLowerCase().includes(q) ||
+        (Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(q)));
 
       const matchesCode =
-        !codeQ || (p.sku || '').toLowerCase().includes(codeQ);
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(cleanQ) ||
+        (p.id || '').toLowerCase().includes(q) ||
+        (p._id || '').toLowerCase().includes(q);
 
-      return matchesName && matchesCode;
+      return matchesName || matchesCode;
     });
-  }, [products, searchNameQuery, productCodeQuery]);
+  }, [products, searchQuery]);
 
   // Product selection & cart handlers
   const handleAddProduct = (product: Product, qty: number = 1) => {
@@ -254,8 +261,7 @@ export const CreateOrderForm: React.FC = () => {
       return [...prev, { product, quantity: qty }];
     });
 
-    setSearchNameQuery('');
-    setProductCodeQuery('');
+    setSearchQuery('');
     setIsSearchOpen(false);
     if (errors.product) {
       setErrors((prev) => ({ ...prev, product: undefined }));
@@ -266,13 +272,13 @@ export const CreateOrderForm: React.FC = () => {
     if (filteredProducts.length > 0) {
       handleAddProduct(filteredProducts[0], 1);
     } else {
-      const term = searchNameQuery.trim() || productCodeQuery.trim();
+      const term = searchQuery.trim();
       addToast({
         type: 'warning',
         title: 'No Matching Product',
         message: term
           ? `Could not find any catalog item matching "${term}".`
-          : 'Please enter a product name or SKU code to search.'
+          : 'Please enter a product name, ID, or SKU code to search.'
       });
     }
   };
@@ -354,8 +360,12 @@ export const CreateOrderForm: React.FC = () => {
       errs.customerPhone = 'Indian mobile number must start with 6, 7, 8, or 9.';
     }
 
-    if (!line1.trim()) {
-      errs.line1 = 'Shipping address line 1 is required.';
+    if (!buildingNo.trim()) {
+      errs.buildingNo = 'Flat / House / Building number is required.';
+    }
+
+    if (!streetName.trim()) {
+      errs.streetName = 'Street number or road name is required.';
     }
 
     if (!city.trim()) {
@@ -398,6 +408,11 @@ export const CreateOrderForm: React.FC = () => {
 
     const finalShippingCharge = selectedShippingQuote ? selectedShippingQuote.deliveryCharges : 0;
 
+    const cleanPhone = customerPhone.replace(/[^\d]/g, '').slice(-10);
+    const formattedPhone = cleanPhone.length === 10
+      ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}`
+      : customerPhone.trim();
+
     try {
       // 1. Prepare backend payload matching POST /api/dropshipper/orders
       const orderPayload = {
@@ -409,11 +424,11 @@ export const CreateOrderForm: React.FC = () => {
         customer: {
           name: customerName.trim(),
           email: customerEmail.trim(),
-          phone: customerPhone.trim()
+          phone: formattedPhone
         },
         shippingAddress: {
-          line1: line1.trim(),
-          line2: line2.trim() || undefined,
+          line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
+          line2: landmark.trim() || undefined,
           city: city.trim(),
           state: state.trim(),
           postalCode: postalCode.trim(),
@@ -450,7 +465,7 @@ export const CreateOrderForm: React.FC = () => {
           prefill: {
             name: customerName.trim(),
             email: customerEmail.trim(),
-            contact: customerPhone.trim()
+            contact: cleanPhone || customerPhone.trim()
           },
           onSuccess: (verification) => {
             setIsSubmitting(false);
@@ -460,11 +475,11 @@ export const CreateOrderForm: React.FC = () => {
                 customer: {
                   name: customerName.trim(),
                   email: customerEmail.trim(),
-                  phone: customerPhone.trim()
+                  phone: formattedPhone
                 },
                 shippingAddress: {
-                  line1: line1.trim(),
-                  line2: line2.trim() || undefined,
+                  line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
+                  line2: landmark.trim() || undefined,
                   city: city.trim(),
                   state: state.trim(),
                   postalCode: postalCode.trim(),
@@ -484,7 +499,6 @@ export const CreateOrderForm: React.FC = () => {
               newOrder.orderNumber = backendResponse.orderNumber || backendResponse.orderId;
             }
             newOrder.status = 'approved';
-            setSubmittedOrder(newOrder);
 
             try {
               confetti({
@@ -496,10 +510,14 @@ export const CreateOrderForm: React.FC = () => {
 
             addToast({
               type: 'success',
-              title: 'Payment Successful & Verified',
-              message: `Order ${newOrder.orderNumber} is confirmed!`,
-              duration: 6000
+              title: 'Payment Successful & Order Placed',
+              message: `Order ${newOrder.orderNumber} confirmed! Redirecting to All Orders...`,
+              duration: 5000
             });
+
+            // Redirect immediately to All Orders page where GET /orders is hit
+            setActiveOrderTab('all');
+            navigate('/orders', { replace: true, state: { newlyCreatedOrderId: newOrder.orderNumber } });
           },
           onError: (err) => {
             setIsSubmitting(false);
@@ -532,7 +550,7 @@ export const CreateOrderForm: React.FC = () => {
           prefill: {
             name: customerName.trim(),
             email: customerEmail.trim(),
-            contact: customerPhone.trim()
+            contact: cleanPhone || customerPhone.trim()
           },
           onSuccess: () => {
             setIsSubmitting(false);
@@ -542,11 +560,11 @@ export const CreateOrderForm: React.FC = () => {
                 customer: {
                   name: customerName.trim(),
                   email: customerEmail.trim(),
-                  phone: customerPhone.trim()
+                  phone: formattedPhone
                 },
                 shippingAddress: {
-                  line1: line1.trim(),
-                  line2: line2.trim() || undefined,
+                  line1: [buildingNo.trim(), streetName.trim()].filter(Boolean).join(', '),
+                  line2: landmark.trim() || undefined,
                   city: city.trim(),
                   state: state.trim(),
                   postalCode: postalCode.trim(),
@@ -564,7 +582,6 @@ export const CreateOrderForm: React.FC = () => {
 
             newOrder.orderNumber = fallbackOrderId;
             newOrder.status = 'approved';
-            setSubmittedOrder(newOrder);
 
             try {
               confetti({
@@ -576,10 +593,14 @@ export const CreateOrderForm: React.FC = () => {
 
             addToast({
               type: 'success',
-              title: 'Payment Successful & Verified',
-              message: `Order ${newOrder.orderNumber} successfully paid!`,
-              duration: 6000
+              title: 'Payment Successful & Order Placed',
+              message: `Order ${newOrder.orderNumber} successfully paid! Redirecting to All Orders...`,
+              duration: 5000
             });
+
+            // Redirect immediately to All Orders page where GET /orders is hit
+            setActiveOrderTab('all');
+            navigate('/orders', { replace: true, state: { newlyCreatedOrderId: newOrder.orderNumber } });
           },
           onError: (err) => {
             setIsSubmitting(false);
@@ -613,13 +634,13 @@ export const CreateOrderForm: React.FC = () => {
     setSubmittedOrder(null);
     setSelectedProductForCreate(null);
     setOrderItems([]);
-    setSearchNameQuery('');
-    setProductCodeQuery('');
+    setSearchQuery('');
     setCustomerName('');
     setCustomerEmail('');
     setCustomerPhone('');
-    setLine1('');
-    setLine2('');
+    setBuildingNo('');
+    setStreetName('');
+    setLandmark('');
     setCity('');
     setState('');
     setPostalCode('');
@@ -747,7 +768,7 @@ export const CreateOrderForm: React.FC = () => {
                     Products in Order
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Search by product name or enter product code (SKU) to add multiple items
+                    Search by product name, product ID, or SKU code to add items
                   </p>
                 </div>
               </div>
@@ -765,23 +786,23 @@ export const CreateOrderForm: React.FC = () => {
               </Button>
             </div>
 
-            {/* Search by Product Name & Product Code Bar */}
+            {/* Single Unified Product Search Bar */}
             <div className="space-y-4">
               <div className="relative" ref={searchContainerRef}>
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                  {/* Product Name Search Bar */}
-                  <div className="sm:col-span-6 space-y-1.5">
+                  {/* Single Search Input */}
+                  <div className="sm:col-span-10 space-y-1.5">
                     <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                       <Search className="w-3.5 h-3.5 text-brand-600" />
-                      <span>Product Name (Search Bar)</span>
+                      <span>Product Search (Name, Product ID or SKU)</span>
                     </label>
                     <div className="relative">
                       <Input
                         type="text"
-                        placeholder="Search product name (e.g. Color Naphthalene Balls, Toothbrush...)"
-                        value={searchNameQuery}
+                        placeholder="Search product name, product code or SKU (e.g. Toothbrush, 2928-1, SKU-2928-1)..."
+                        value={searchQuery}
                         onChange={(e) => {
-                          setSearchNameQuery(e.target.value);
+                          setSearchQuery(e.target.value);
                           setIsSearchOpen(true);
                         }}
                         onFocus={() => setIsSearchOpen(true)}
@@ -794,34 +815,6 @@ export const CreateOrderForm: React.FC = () => {
                         className="pl-9 pr-3 text-xs sm:text-sm bg-white border-slate-200 focus:border-brand-500"
                       />
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  {/* Product Code / SKU Input */}
-                  <div className="sm:col-span-4 space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Barcode className="w-3.5 h-3.5 text-brand-600" />
-                      <span>Product Code / SKU</span>
-                    </label>
-                    <div className="relative">
-                      <Input
-                        type="text"
-                        placeholder="e.g. SKU-2928-1"
-                        value={productCodeQuery}
-                        onChange={(e) => {
-                          setProductCodeQuery(e.target.value);
-                          setIsSearchOpen(true);
-                        }}
-                        onFocus={() => setIsSearchOpen(true)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleManualAdd();
-                          }
-                        }}
-                        className="pl-9 pr-3 text-xs sm:text-sm font-mono bg-white border-slate-200 focus:border-brand-500 uppercase"
-                      />
-                      <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
                   </div>
 
@@ -839,7 +832,7 @@ export const CreateOrderForm: React.FC = () => {
                 </div>
 
                 {/* Live Autocomplete Suggestions Dropdown */}
-                {isSearchOpen && (searchNameQuery.trim() || productCodeQuery.trim()) && (
+                {isSearchOpen && searchQuery.trim() && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-soft-xl overflow-hidden max-h-80 overflow-y-auto animate-in fade-in-50 zoom-in-95">
                     <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] font-semibold text-slate-500">
                       <span>Matching Products ({filteredProducts.length})</span>
@@ -913,32 +906,6 @@ export const CreateOrderForm: React.FC = () => {
                 )}
               </div>
 
-              {/* Quick-Pick Popular Catalog Chips */}
-              <div className="flex items-center gap-2 flex-wrap pt-1 text-xs text-slate-500">
-                <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-500" />
-                  Quick Add:
-                </span>
-                {products.slice(0, 4).map((p) => {
-                  const inOrder = orderItems.some((it) => it.product.id === p.id);
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleAddProduct(p)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                        inOrder
-                          ? 'bg-brand-50 text-brand-700 border-brand-200 font-semibold'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-brand-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Plus className="w-3 h-3 text-brand-600" />
-                      <span className="truncate max-w-[140px]">{p.name}</span>
-                      <span className="font-mono text-[10px] text-slate-400">({p.sku.split('-')[0]})</span>
-                    </button>
-                  );
-                })}
-              </div>
 
               {errors.product && (
                 <div className="flex items-center gap-1.5 text-rose-500 text-xs font-semibold mt-1">
@@ -965,7 +932,7 @@ export const CreateOrderForm: React.FC = () => {
                     <ShoppingBag className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-slate-700">No products added yet</p>
                     <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                      Type a product name in the search bar or enter a product code (SKU) above to add multiple products to this order.
+                      Search by product name, product code, or SKU above to add products to this order.
                     </p>
                   </div>
                 ) : (
@@ -1164,28 +1131,22 @@ export const CreateOrderForm: React.FC = () => {
                       placeholder="98765 43210"
                       maxLength={11}
                       value={(() => {
-                        let digits = customerPhone.replace(/[^\d]/g, '');
-                        if (digits.startsWith('91') && digits.length > 10) {
-                          digits = digits.slice(2);
-                        }
-                        digits = digits.slice(0, 10);
+                        const digits = customerPhone.replace(/[^\d]/g, '').slice(0, 10);
                         if (digits.length > 5) {
                           return `${digits.slice(0, 5)} ${digits.slice(5)}`;
                         }
                         return digits;
                       })()}
                       onChange={(e) => {
-                        let digits = e.target.value.replace(/[^\d]/g, '');
-                        if (digits.startsWith('91') && digits.length > 10) {
-                          digits = digits.slice(2);
+                        let raw = e.target.value.replace(/[^\d]/g, '');
+                        // If user pastes number with +91 country code or leading 0
+                        if (raw.startsWith('91') && raw.length > 10) {
+                          raw = raw.slice(2);
+                        } else if (raw.startsWith('0') && raw.length > 10) {
+                          raw = raw.slice(1);
                         }
-                        digits = digits.slice(0, 10);
-                        let formatted = digits;
-                        if (digits.length > 5) {
-                          formatted = `${digits.slice(0, 5)} ${digits.slice(5)}`;
-                        }
-                        const fullVal = digits ? `+91 ${formatted}` : '';
-                        setCustomerPhone(fullVal);
+                        const digits = raw.slice(0, 10);
+                        setCustomerPhone(digits);
 
                         if (errors.customerPhone && digits.length === 10 && /^[6-9]/.test(digits)) {
                           setErrors((prev) => ({ ...prev, customerPhone: undefined }));
@@ -1193,8 +1154,7 @@ export const CreateOrderForm: React.FC = () => {
                       }}
                       onBlur={() => {
                         const digits = customerPhone.replace(/[^\d]/g, '');
-                        const local = digits.startsWith('91') && digits.length === 12 ? digits.slice(2) : digits;
-                        if (local && (local.length !== 10 || !/^[6-9]/.test(local))) {
+                        if (digits && (digits.length !== 10 || !/^[6-9]/.test(digits))) {
                           setErrors((prev) => ({
                             ...prev,
                             customerPhone: 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.'
@@ -1233,30 +1193,55 @@ export const CreateOrderForm: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-              {/* Address Line 1 */}
-              <FormItem className="sm:col-span-8">
-                <FormLabel>Street Address *</FormLabel>
+              {/* Building / House / Flat No */}
+              <FormItem className="sm:col-span-6">
+                <FormLabel>Building No. / House / Flat No. *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="House / Flat No., Building Name, Street Area"
-                    value={line1}
-                    onChange={(e) => setLine1(e.target.value)}
-                    className={errors.line1 ? 'border-rose-500' : ''}
+                    placeholder="e.g. Flat 402, Building 3B, Sunshine Apts"
+                    value={buildingNo}
+                    onChange={(e) => {
+                      setBuildingNo(e.target.value);
+                      if (errors.buildingNo) {
+                        setErrors((prev) => ({ ...prev, buildingNo: undefined }));
+                      }
+                    }}
+                    className={errors.buildingNo ? 'border-rose-500' : ''}
                   />
                 </FormControl>
-                {errors.line1 && <FormMessage>{errors.line1}</FormMessage>}
+                {errors.buildingNo && <FormMessage>{errors.buildingNo}</FormMessage>}
               </FormItem>
 
-              {/* Address Line 2 */}
-              <FormItem className="sm:col-span-4">
-                <FormLabel>Apt / Suite / Unit</FormLabel>
+              {/* Street Number / Road / Area */}
+              <FormItem className="sm:col-span-6">
+                <FormLabel>Street Number / Road / Area *</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="Apartment, Landmark, Suite (optional)"
-                    value={line2}
-                    onChange={(e) => setLine2(e.target.value)}
+                    placeholder="e.g. Street No. 5, MG Road, Sector 14"
+                    value={streetName}
+                    onChange={(e) => {
+                      setStreetName(e.target.value);
+                      if (errors.streetName) {
+                        setErrors((prev) => ({ ...prev, streetName: undefined }));
+                      }
+                    }}
+                    className={errors.streetName ? 'border-rose-500' : ''}
+                  />
+                </FormControl>
+                {errors.streetName && <FormMessage>{errors.streetName}</FormMessage>}
+              </FormItem>
+
+              {/* Landmark (Optional) */}
+              <FormItem className="sm:col-span-12">
+                <FormLabel>Nearby Landmark (Optional)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="text"
+                    placeholder="e.g. Near City Hospital, Opposite Metro Pillar 120"
+                    value={landmark}
+                    onChange={(e) => setLandmark(e.target.value)}
                   />
                 </FormControl>
               </FormItem>
@@ -1306,28 +1291,6 @@ export const CreateOrderForm: React.FC = () => {
                 {errors.postalCode && <FormMessage>{errors.postalCode}</FormMessage>}
               </FormItem>
 
-              {/* Country Selection */}
-              <FormItem className="sm:col-span-12">
-                <FormLabel>Destination Country *</FormLabel>
-                <FormControl>
-                  <Select value={country} onValueChange={setCountry}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="India">🇮🇳 India</SelectItem>
-                      <SelectItem value="United States">🇺🇸 United States</SelectItem>
-                      <SelectItem value="Canada">🇨🇦 Canada</SelectItem>
-                      <SelectItem value="United Kingdom">🇬🇧 United Kingdom</SelectItem>
-                      <SelectItem value="Australia">🇦🇺 Australia</SelectItem>
-                      <SelectItem value="Germany">🇩🇪 Germany</SelectItem>
-                      <SelectItem value="France">🇫🇷 France</SelectItem>
-                      <SelectItem value="Japan">🇯🇵 Japan</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                {errors.country && <FormMessage>{errors.country}</FormMessage>}
-              </FormItem>
 
               {/* Serviceability & Dual Quote Picker Sub-module */}
               <div className="sm:col-span-12 pt-3 border-t border-slate-100">

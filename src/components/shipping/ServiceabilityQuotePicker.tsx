@@ -6,7 +6,6 @@ import {
 } from '../../types/dropshipper';
 import {
   serviceabilityService,
-  WAREHOUSE_HUBS,
   DEFAULT_WAREHOUSE_PINCODE
 } from '../../services/serviceabilityService';
 import { Button } from '../ui/button';
@@ -37,6 +36,7 @@ import { formatCurrency, calculateDeliveryDate } from '../../utils/formatters';
 export interface ServiceabilityQuotePickerProps {
   customerPincode: string;
   onCustomerPincodeChange?: (pin: string) => void;
+  warehouses?: Array<{ pincode: string; name: string }>;
   warehousePincode?: string;
   onWarehousePincodeChange?: (pin: string) => void;
   weightKg?: number;
@@ -56,6 +56,7 @@ export interface ServiceabilityQuotePickerProps {
 export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps> = ({
   customerPincode,
   onCustomerPincodeChange,
+  warehouses,
   warehousePincode = DEFAULT_WAREHOUSE_PINCODE,
   onWarehousePincodeChange,
   weightKg = 0.5,
@@ -241,35 +242,37 @@ export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps>
       )}
 
       {/* Pincode Input Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
-        {/* Origin Hub */}
-        <div className="sm:col-span-6 space-y-1.5">
-          <label className="text-xs font-medium text-slate-700 flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5 text-slate-400" />
-            <span>Dispatch Warehouse</span>
-          </label>
-          <Select
-            value={internalWarehousePin}
-            onValueChange={(val) => {
-              setInternalWarehousePin(val);
-              if (onWarehousePincodeChange) onWarehousePincodeChange(val);
-            }}
-          >
-            <SelectTrigger className="w-full text-xs h-9 rounded-xl bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium">
-              <SelectValue placeholder="Select warehouse hub" />
-            </SelectTrigger>
-            <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
-              {WAREHOUSE_HUBS.map((hub) => (
-                <SelectItem key={hub.pincode} value={hub.pincode} className="text-xs">
-                  {hub.pincode} — {hub.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className={warehouses && warehouses.length > 0 ? 'grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1' : 'pt-1'}>
+        {/* Origin Hub - Only displayed if provided dynamically from backend */}
+        {warehouses && warehouses.length > 0 && (
+          <div className="sm:col-span-6 space-y-1.5">
+            <label className="text-xs font-medium text-slate-700 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              <span>Dispatch Warehouse</span>
+            </label>
+            <Select
+              value={internalWarehousePin}
+              onValueChange={(val) => {
+                setInternalWarehousePin(val);
+                if (onWarehousePincodeChange) onWarehousePincodeChange(val);
+              }}
+            >
+              <SelectTrigger className="w-full text-xs h-9 rounded-xl bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium">
+                <SelectValue placeholder="Select warehouse hub" />
+              </SelectTrigger>
+              <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
+                {warehouses.map((hub) => (
+                  <SelectItem key={hub.pincode} value={hub.pincode} className="text-xs">
+                    {hub.pincode} — {hub.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Customer Pincode Input */}
-        <div className="sm:col-span-6 space-y-1.5">
+        <div className={warehouses && warehouses.length > 0 ? 'sm:col-span-6 space-y-1.5' : 'space-y-1.5'}>
           <label className="text-xs font-medium text-slate-700 flex items-center justify-between">
             <span className="flex items-center gap-1">
               <Truck className="w-3.5 h-3.5 text-slate-400" />
@@ -287,7 +290,7 @@ export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps>
                 const cleaned = e.target.value.replace(/[^\d]/g, '').slice(0, 6);
                 if (onCustomerPincodeChange) onCustomerPincodeChange(cleaned);
               }}
-              className="text-xs font-mono font-bold tracking-wider h-9 bg-slate-50 focus:bg-white"
+              className="text-xs font-mono font-bold tracking-wider h-9 bg-slate-50 focus:bg-white flex-1"
             />
             <Button
               type="button"
@@ -299,7 +302,7 @@ export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps>
               {isLoading ? (
                 <RotateCw className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <span>Check</span>
+                <span>Check Rates</span>
               )}
             </Button>
           </div>

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   serviceabilityService,
-  WAREHOUSE_HUBS,
   DEFAULT_WAREHOUSE_PINCODE
 } from '../../services/serviceabilityService';
 import {
@@ -139,7 +138,7 @@ export const AddressServiceabilityChecker: React.FC<AddressServiceabilityChecker
   const estimatedDays = result?.estimatedDays || selectedQuote?.estimatedDays || '3 Days';
   const expectedDeliveryDate = calculateDeliveryDate(estimatedDays);
 
-  const selectedWarehouse = WAREHOUSE_HUBS.find((h) => h.pincode === warehousePincode);
+  const selectedWarehouse = warehousePincode ? { pincode: warehousePincode, name: `Warehouse (${warehousePincode})` } : null;
 
   const fullAddressString = [
     addressLine.trim(),
@@ -294,23 +293,16 @@ export const AddressServiceabilityChecker: React.FC<AddressServiceabilityChecker
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Origin Fulfillment Warehouse
+                  Origin Fulfillment Warehouse Pincode
                 </label>
-                <Select
+                <Input
+                  type="text"
+                  maxLength={6}
                   value={warehousePincode}
-                  onValueChange={(val) => setWarehousePincode(val)}
-                >
-                  <SelectTrigger className="w-full text-xs h-9 rounded-xl bg-slate-50 border-slate-200 text-slate-800 font-medium">
-                    <SelectValue placeholder="Select warehouse hub" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white rounded-xl shadow-lg border-slate-200">
-                    {WAREHOUSE_HUBS.map((hub) => (
-                      <SelectItem key={hub.pincode} value={hub.pincode} className="text-xs">
-                        {hub.pincode} — {hub.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setWarehousePincode(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                  placeholder="e.g. 421004"
+                  className="h-9 text-xs font-mono bg-slate-50 focus:bg-white"
+                />
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">

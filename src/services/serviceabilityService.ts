@@ -14,7 +14,7 @@ export const WAREHOUSE_HUBS = [
   { pincode: '700001', name: 'Kolkata Eastern Hub (WB)', state: 'West Bengal' }
 ] as const;
 
-export const DEFAULT_WAREHOUSE_PINCODE = '560001';
+export const DEFAULT_WAREHOUSE_PINCODE = '421004';
 
 export const serviceabilityService = {
   /**

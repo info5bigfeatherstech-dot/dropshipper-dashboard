@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { Order, OrderItem, Product, OrderStatus, ToastMessage } from '../types';
-import { mockOrders } from '../data/mockOrders';
 
 interface NotificationItem {
   id: string;
@@ -86,7 +85,7 @@ export const useStore = create<StoreState>((set, get) => {
 
     products: [],
     setProducts: (products) => set({ products }),
-    orders: mockOrders,
+    orders: [],
 
     activeOrderTab: 'all',
     setActiveOrderTab: (tab) => set({ activeOrderTab: tab }),

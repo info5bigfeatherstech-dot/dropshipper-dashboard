@@ -5,7 +5,6 @@ import {
 } from '../../types/dropshipper';
 import {
   serviceabilityService,
-  WAREHOUSE_HUBS,
   DEFAULT_WAREHOUSE_PINCODE
 } from '../../services/serviceabilityService';
 import { Button } from '../ui/button';
@@ -208,17 +207,14 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
               <label className="text-xs font-semibold text-slate-700">
                 Warehouse Pickup Pincode *
               </label>
-              <select
+              <Input
+                type="text"
+                maxLength={6}
                 value={warehousePin}
-                onChange={(e) => setWarehousePin(e.target.value)}
-                className="w-full text-xs h-10 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              >
-                {WAREHOUSE_HUBS.map((hub) => (
-                  <option key={hub.pincode} value={hub.pincode}>
-                    {hub.pincode} — {hub.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(e) => setWarehousePin(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                placeholder="e.g. 421004"
+                className="font-mono text-xs"
+              />
             </div>
 
             {/* Weight (Kg) */}

@@ -80,6 +80,8 @@ export interface Order {
   trackingNumber?: string;
   shippingCarrier?: string;
   shippingCharges?: number;
+  totalAmount?: number;
+  subtotal?: number;
   shippingPaymentMode?: 'prepaid' | 'cod';
   estimatedDeliveryDays?: string;
   warehousePincode?: string;
