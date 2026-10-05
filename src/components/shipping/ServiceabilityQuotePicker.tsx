@@ -410,7 +410,7 @@ export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps>
                   </Badge>
                 </div>
                 <p className="text-rose-700 text-xs">
-                  No active courier partner can deliver to this destination pincode from the selected origin warehouse.
+                  No active courier partner can deliver to this destination pincod from the selected origin warehouse.
                 </p>
               </div>
             </div>
