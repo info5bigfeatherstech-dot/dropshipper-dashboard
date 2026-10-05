@@ -5,6 +5,7 @@ import { ProductsPage } from './pages/ProductsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { CreateOrderPage } from './pages/CreateOrderPage';
+import { ServiceabilityPage } from './pages/ServiceabilityPage';
 import { LoginPage } from './pages/LoginPage';
 import { getAuthToken, isAuthBypassed } from './lib/api';
 
@@ -55,6 +56,7 @@ export const App: React.FC = () => {
           <Route path="products/:id" element={<ProductDetailPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/create" element={<CreateOrderPage />} />
+          <Route path="orders/serviceability" element={<ServiceabilityPage />} />
           <Route path="*" element={<Navigate to="/products" replace />} />
         </Route>
       </Routes>

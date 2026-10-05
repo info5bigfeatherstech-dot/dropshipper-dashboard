@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { Product } from '../types';
+import { productsService } from '../services/productsService';
 import { StockBadge } from '../components/common/StatusBadge';
 import { ProductCard } from '../components/common/ProductCard';
 import { formatCurrency, calculateMargin } from '../utils/formatters';
@@ -61,9 +62,30 @@ export const ProductDetailPage: React.FC = () => {
     addToast
   } = useStore();
 
-  const product = useMemo(() => {
-    return products.find((p) => p.id === id) || null;
+  const storeProduct = useMemo(() => {
+    return products.find((p) => p.id === id || p.slug === id) || null;
   }, [products, id]);
+
+  const [fetchedProduct, setFetchedProduct] = useState<Product | null>(null);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+
+  useEffect(() => {
+    if (!storeProduct && id) {
+      let isMounted = true;
+      setLoadingProduct(true);
+      productsService.getProductBySlug(id).then((p) => {
+        if (isMounted) {
+          setFetchedProduct(p);
+          setLoadingProduct(false);
+        }
+      }).catch(() => {
+        if (isMounted) setLoadingProduct(false);
+      });
+      return () => { isMounted = false; };
+    }
+  }, [storeProduct, id]);
+
+  const product = storeProduct || fetchedProduct;
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [calculatorQty, setCalculatorQty] = useState(1);
@@ -71,6 +93,17 @@ export const ProductDetailPage: React.FC = () => {
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const [isDownloadingAllImages, setIsDownloadingAllImages] = useState(false);
   const [showServiceabilityModal, setShowServiceabilityModal] = useState(false);
+
+  // If loading product
+  if (loadingProduct) {
+    return (
+      <div className="py-24 text-center max-w-md mx-auto">
+        <div className="w-10 h-10 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <h3 className="text-base font-semibold text-slate-800">Loading catalog item...</h3>
+        <p className="text-xs text-slate-500 mt-1">Retrieving supplier verified specs and real-time inventory</p>
+      </div>
+    );
+  }
 
   // If product not found
   if (!product) {
@@ -263,9 +296,17 @@ export const ProductDetailPage: React.FC = () => {
     }
   };
 
+  const categoryName =
+    typeof product.category === 'object' && product.category !== null
+      ? (product.category as any)?.name || (product.category as any)?.slug || 'General'
+      : product.category || 'General';
+
   // Related products from same category
   const relatedProducts = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
+    .filter((p) => {
+      const pCat = typeof p.category === 'object' && p.category !== null ? (p.category as any)?.name : p.category;
+      return pCat === categoryName && p.id !== product.id;
+    })
     .slice(0, 3);
 
   return (
@@ -284,7 +325,7 @@ export const ProductDetailPage: React.FC = () => {
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span>Products</span>
             <span>/</span>
-            <span className="text-slate-600 font-medium">{product.category}</span>
+            <span className="text-slate-600 font-medium">{categoryName}</span>
             <span>/</span>
             <span className="font-mono text-slate-500">{product.sku}</span>
           </div>
@@ -456,7 +497,7 @@ export const ProductDetailPage: React.FC = () => {
               {/* Badges on Hero Image */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
                 <Badge className="bg-white/95 text-slate-900 shadow-md backdrop-blur border-none font-semibold text-xs px-3 py-1">
-                  {product.category}
+                  {categoryName}
                 </Badge>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/90 text-white text-[11px] font-semibold backdrop-blur shadow-xs">
                   <ShieldCheck className="w-3.5 h-3.5" />
@@ -590,7 +631,7 @@ export const ProductDetailPage: React.FC = () => {
                     <Truck className="w-4 h-4 text-brand-600" /> Dispatch Turnaround
                   </span>
                   <span className="font-semibold text-slate-900">
-                    {product.specs.fulfillmentTime}
+                    {product.specs?.fulfillmentTime || '24-48 Hours'}
                   </span>
                 </div>
 
@@ -599,28 +640,28 @@ export const ProductDetailPage: React.FC = () => {
                     <Box className="w-4 h-4 text-brand-600" /> Fulfillment Origin Hub
                   </span>
                   <span className="font-semibold text-slate-900">
-                    {product.specs.origin}
+                    {product.specs?.origin || 'India'}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between p-3.5 bg-white">
                   <span className="text-slate-500 font-medium">Parcel Dimensions</span>
                   <span className="font-semibold text-slate-900">
-                    {product.specs.dimensions}
+                    {product.specs?.dimensions || '15 x 10 x 5 cm'}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between p-3.5 bg-slate-50/60">
                   <span className="text-slate-500 font-medium">Gross Weight</span>
                   <span className="font-semibold text-slate-900">
-                    {product.specs.weight}
+                    {product.specs?.weight || '0.5 kg'}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between p-3.5 bg-white">
                   <span className="text-slate-500 font-medium">Material Composition</span>
                   <span className="font-semibold text-slate-900">
-                    {product.specs.material}
+                    {product.specs?.material || 'Supplier Assured Grade'}
                   </span>
                 </div>
 
@@ -629,7 +670,7 @@ export const ProductDetailPage: React.FC = () => {
                     <ShieldCheck className="w-4 h-4 text-emerald-600" /> Supplier Warranty
                   </span>
                   <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    {product.specs.warranty}
+                    {product.specs?.warranty || 'Supplier Assured'}
                   </span>
                 </div>
               </div>
@@ -1002,7 +1043,7 @@ export const ProductDetailPage: React.FC = () => {
                 Related Sourcing Opportunities
               </h3>
               <p className="text-xs text-slate-500">
-                Other in-stock items in {product.category} with verified margins
+                Other in-stock items in {categoryName} with verified margins
               </p>
             </div>
             <Button

@@ -40,3 +40,16 @@ export const calculateMargin = (dropshipPrice: number, retailPrice: number) => {
   const percentage = retailPrice > 0 ? Math.round((profit / retailPrice) * 100) : 0;
   return { profit, percentage };
 };
+
+export const calculateDeliveryDate = (estimatedDaysStr?: string | number): string => {
+  const match = String(estimatedDaysStr || '').match(/\d+/);
+  const daysToAdd = match ? Math.max(1, parseInt(match[0], 10)) : 3;
+  const d = new Date();
+  d.setDate(d.getDate() + daysToAdd);
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short'
+  }).format(d);
+};
+

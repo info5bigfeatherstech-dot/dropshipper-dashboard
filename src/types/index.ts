@@ -13,9 +13,12 @@ export interface ProductSpecs {
 
 export interface Product {
   id: string;
+  _id?: string;
+  slug?: string;
   name: string;
   sku: string;
   category: string;
+  categoryId?: string;
   dropshipPrice: number;       // The admin-approved price
   suggestedRetailPrice: number; // MSRP
   costEstimate?: number;

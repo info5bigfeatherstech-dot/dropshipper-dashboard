@@ -29,9 +29,10 @@ import {
   Sliders,
   ChevronDown,
   ChevronUp,
-  ShieldCheck
+  ShieldCheck,
+  Calendar
 } from 'lucide-react';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, calculateDeliveryDate } from '../../utils/formatters';
 
 export interface ServiceabilityQuotePickerProps {
   customerPincode: string;
@@ -325,57 +326,91 @@ export const ServiceabilityQuotePicker: React.FC<ServiceabilityQuotePickerProps>
       {!isLoading && serviceabilityData && (
         <div>
           {isDeliverable ? (
-            <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              {/* Left Side: Deliverable info & courier */}
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-emerald-950">
-                      Serviceable to {serviceabilityData.customerPincode}
-                    </span>
-                    <Badge variant="outline" className="bg-white/80 text-emerald-800 border-emerald-300 text-[10px] font-semibold py-0">
-                      {courierName}
-                    </Badge>
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/90 to-teal-50/40 border-2 border-emerald-300 shadow-xs space-y-3">
+              {/* Deliverable verdict & ETA banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b border-emerald-200/70">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                    <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
                   </div>
-                  <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Direct dispatch verified via {serviceabilityData.shippingProvider || 'Courier Network'}</span>
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-black text-emerald-950">
+                        Delivery Available to {serviceabilityData.customerPincode}
+                      </span>
+                      <Badge className="bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider py-0">
+                        Serviceable
+                      </Badge>
+                      <Badge variant="outline" className="bg-white/80 text-emerald-800 border-emerald-300 text-[10px] font-semibold py-0">
+                        {courierName}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-emerald-700 mt-0.5 flex items-center gap-1.5 font-medium">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Direct courier fulfillment verified via {serviceabilityData.shippingProvider || 'Shipmozo Network'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 sm:border-l sm:border-emerald-200/70 sm:pl-3 self-end sm:self-center">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">
+                      Freight Charge
+                    </span>
+                    <span className="text-lg font-black text-slate-900">
+                      {formatCurrency(shippingFee)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Right Side: Price & Estimated Delivery */}
-              <div className="flex items-center gap-4 sm:border-l sm:border-emerald-200/70 sm:pl-4 self-end sm:self-center">
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                    Shipping Rate
-                  </span>
-                  <span className="text-lg font-black text-slate-900">
-                    {formatCurrency(shippingFee)}
-                  </span>
+              {/* Prominent Estimated Days & Expected Date Highlight */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+                <div className="flex items-center gap-2.5 p-2.5 bg-white/90 rounded-xl border border-emerald-200/60 shadow-xs">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">
+                      Estimated Transit Time
+                    </span>
+                    <span className="text-sm font-black text-emerald-950">
+                      {displayDays}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">
-                    Est. Delivery
-                  </span>
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-indigo-600" />
-                    {displayDays}
-                  </span>
+                <div className="flex items-center gap-2.5 p-2.5 bg-white/90 rounded-xl border border-emerald-200/60 shadow-xs">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">
+                      Expected Arrival
+                    </span>
+                    <span className="text-sm font-black text-slate-900">
+                      Arrives by {calculateDeliveryDate(rawDays)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2.5 text-xs text-rose-800">
-              <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
-              <div>
-                <span className="font-bold">Not Serviceable to {serviceabilityData.customerPincode}</span>
-                <p className="text-rose-600 text-[11px] mt-0.5">
-                  No active courier partner can deliver to this pincode from the selected warehouse.
+            <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 flex items-start gap-3 text-xs text-rose-900 shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                <XCircle className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-rose-950">
+                    Delivery Not Available to Pincode {serviceabilityData.customerPincode}
+                  </span>
+                  <Badge className="bg-rose-600 text-white text-[10px] py-0 px-1.5 uppercase font-mono">
+                    Not Serviceable
+                  </Badge>
+                </div>
+                <p className="text-rose-700 text-xs">
+                  No active courier partner can deliver to this destination pincode from the selected origin warehouse.
                 </p>
               </div>
             </div>

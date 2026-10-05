@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { Order, OrderItem, Product, OrderStatus, ToastMessage } from '../types';
-import { mockProducts } from '../data/mockProducts';
 import { mockOrders } from '../data/mockOrders';
 
 interface NotificationItem {
@@ -22,8 +21,9 @@ interface StoreState {
 
   // Data
   products: Product[];
+  setProducts: (products: Product[]) => void;
   orders: Order[];
-  
+
   // Navigation / Pre-selection
   activeOrderTab: 'all' | 'create';
   setActiveOrderTab: (tab: 'all' | 'create') => void;
@@ -84,7 +84,8 @@ export const useStore = create<StoreState>((set, get) => {
     mobileMenuOpen: false,
     setMobileMenuOpen: (val) => set({ mobileMenuOpen: val }),
 
-    products: mockProducts,
+    products: [],
+    setProducts: (products) => set({ products }),
     orders: mockOrders,
 
     activeOrderTab: 'all',
@@ -161,16 +162,16 @@ export const useStore = create<StoreState>((set, get) => {
       // Resolve items array (either provided as items list or single product)
       const orderItemsList: OrderItem[] = (orderData.items && orderData.items.length > 0)
         ? orderData.items.map((it) => ({
-            productId: it.product.id,
-            productName: it.product.name,
-            sku: it.product.sku,
-            image: it.product.thumbnail,
-            dropshipPrice: it.product.dropshipPrice,
-            quantity: it.quantity,
-            total: +(it.product.dropshipPrice * it.quantity).toFixed(2)
-          }))
+          productId: it.product.id,
+          productName: it.product.name,
+          sku: it.product.sku,
+          image: it.product.thumbnail,
+          dropshipPrice: it.product.dropshipPrice,
+          quantity: it.quantity,
+          total: +(it.product.dropshipPrice * it.quantity).toFixed(2)
+        }))
         : orderData.product
-        ? [
+          ? [
             {
               productId: orderData.product.id,
               productName: orderData.product.name,
@@ -181,7 +182,7 @@ export const useStore = create<StoreState>((set, get) => {
               total: +(orderData.product.dropshipPrice * (orderData.quantity || 1)).toFixed(2)
             }
           ]
-        : [];
+          : [];
 
       const primaryItem = orderItemsList[0] || {
         productId: 'prod-unknown',
@@ -327,27 +328,27 @@ export const useStore = create<StoreState>((set, get) => {
         selectedOrderForDetail:
           state.selectedOrderForDetail?.id === orderId
             ? {
-                ...state.selectedOrderForDetail,
-                status,
-                adminNote: adminNote || state.selectedOrderForDetail.adminNote,
-                rejectionReason:
-                  status === 'rejected' ? adminNote : state.selectedOrderForDetail.rejectionReason,
-                updatedAt: now,
-                timeline: [
-                  ...state.selectedOrderForDetail.timeline,
-                  {
-                    status,
-                    label:
-                      status === 'approved'
-                        ? 'Approved by Admin'
-                        : status === 'rejected'
+              ...state.selectedOrderForDetail,
+              status,
+              adminNote: adminNote || state.selectedOrderForDetail.adminNote,
+              rejectionReason:
+                status === 'rejected' ? adminNote : state.selectedOrderForDetail.rejectionReason,
+              updatedAt: now,
+              timeline: [
+                ...state.selectedOrderForDetail.timeline,
+                {
+                  status,
+                  label:
+                    status === 'approved'
+                      ? 'Approved by Admin'
+                      : status === 'rejected'
                         ? 'Rejected by Admin'
                         : status,
-                    timestamp: now,
-                    note: adminNote
-                  }
-                ]
-              }
+                  timestamp: now,
+                  note: adminNote
+                }
+              ]
+            }
             : state.selectedOrderForDetail
       }));
     }

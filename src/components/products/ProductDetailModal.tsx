@@ -36,25 +36,35 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const product = propProduct || lastProductRef.current;
   if (!product) return null;
 
+  const dropshipPrice = Number(product.dropshipPrice || 0);
+  const suggestedRetailPrice = Number(product.suggestedRetailPrice || (dropshipPrice > 0 ? Math.round(dropshipPrice * 1.5) : 0));
+
   const { profit, percentage } = calculateMargin(
-    product.dropshipPrice,
-    product.suggestedRetailPrice
+    dropshipPrice,
+    suggestedRetailPrice
   );
 
-  const images = product.images.length > 0 ? product.images : [product.thumbnail];
-  const activeImage = images[selectedImageIndex] || product.thumbnail;
+  const images = (product.images && product.images.length > 0) ? product.images : [product.thumbnail || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80'];
+  const activeImage = images[selectedImageIndex] || product.thumbnail || images[0];
 
   const handleCreateOrderClick = () => {
     onCreateOrder(product);
     onClose();
   };
 
+  const origin = product.specs?.origin || 'India';
+  const fulfillmentTime = product.specs?.fulfillmentTime || '24-48 Hours';
+  const dimensions = product.specs?.dimensions || '15 x 10 x 5 cm';
+  const weight = product.specs?.weight || '0.5 kg';
+  const material = product.specs?.material || 'Supplier Assured Grade';
+  const warranty = product.specs?.warranty || 'Supplier Assured';
+
   return (
     <Drawer
       isOpen={isOpen && Boolean(propProduct)}
       onClose={onClose}
-      title={product.name}
-      subtitle={`SKU: ${product.sku} • Sourced from ${product.specs.origin}`}
+      title={product.name || 'Product Details'}
+      subtitle={`SKU: ${product.sku || 'N/A'} • Sourced from ${origin}`}
       width="max-w-2xl"
     >
       <div className="space-y-6">
@@ -179,7 +189,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <Truck className="w-3.5 h-3.5 text-brand-600" /> Fulfillment Turnaround
               </span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.fulfillmentTime}
+                {fulfillmentTime}
               </span>
             </div>
 
@@ -188,28 +198,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <Box className="w-3.5 h-3.5 text-brand-600" /> Dispatch Warehouse
               </span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.origin}
+                {origin}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-900">
               <span className="text-slate-500 dark:text-slate-400">Dimensions</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.dimensions}
+                {dimensions}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-50/50 dark:bg-slate-800/30">
               <span className="text-slate-500 dark:text-slate-400">Package Weight</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.weight}
+                {weight}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-900">
               <span className="text-slate-500 dark:text-slate-400">Material</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.material}
+                {material}
               </span>
             </div>
 
@@ -218,7 +228,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <ShieldCheck className="w-3.5 h-3.5 text-brand-600" /> Supplier Warranty
               </span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {product.specs.warranty}
+                {warranty}
               </span>
             </div>
           </div>

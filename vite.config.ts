@@ -17,6 +17,21 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: targetUrl,
           changeOrigin: true,
+        },
+        '/catalog': {
+          target: targetUrl,
+          changeOrigin: true,
+          rewrite: (path) => `/api/dropshipper${path}`
+        },
+        '/orders': {
+          target: targetUrl,
+          changeOrigin: true,
+          rewrite: (path) => `/api/dropshipper${path}`,
+          bypass: (req) => {
+            if (req.headers.accept?.includes('text/html')) {
+              return '/index.html';
+            }
+          }
         }
       }
     }

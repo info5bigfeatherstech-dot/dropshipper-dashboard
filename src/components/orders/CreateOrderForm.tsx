@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { Product } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
@@ -14,14 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
 import {
   FormItem,
   FormLabel,
@@ -38,15 +30,14 @@ import {
   Minus,
   ShieldCheck,
   RotateCcw,
-  SlidersHorizontal,
-  ChevronDown,
   Clock,
   Search,
   Barcode,
   Hash,
   Trash2,
   ShoppingBag,
-  PackageSearch
+  PackageSearch,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -56,7 +47,8 @@ import {
 } from '../../types/dropshipper';
 import { ServiceabilityQuotePicker } from '../shipping/ServiceabilityQuotePicker';
 import { DEFAULT_WAREHOUSE_PINCODE } from '../../services/serviceabilityService';
-import { ordersService } from '../../services/ordersService';
+import { ordersService, OrderQuoteResponse } from '../../services/ordersService';
+import { productsService } from '../../services/productsService';
 import { openRazorpayCheckout } from '../../utils/razorpay';
 
 export interface SelectedOrderItem {
@@ -88,10 +80,9 @@ export const CreateOrderForm: React.FC = () => {
     addToast
   } = useStore();
 
-  // Multi-product order state
+  // Multi-product order state - starts empty unless explicitly passed via selectedProductForCreate
   const [orderItems, setOrderItems] = useState<SelectedOrderItem[]>(() => {
-    const initial = selectedProductForCreate || (products.length > 0 ? products[0] : null);
-    return initial ? [{ product: initial, quantity: 1 }] : [];
+    return selectedProductForCreate ? [{ product: selectedProductForCreate, quantity: 1 }] : [];
   });
 
   // Product search & SKU input state
@@ -100,33 +91,44 @@ export const CreateOrderForm: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Customer state
-  const [customerName, setCustomerName] = useState('Sarah Jenkins');
-  const [customerEmail, setCustomerEmail] = useState('sarah.jenkins@example.com');
-  const [customerPhone, setCustomerPhone] = useState('+91 98765 43210');
+  // Customer state - starts empty
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
 
-  // Address state (Defaulted to Indian dropship route)
-  const [line1, setLine1] = useState('Flat 402, Block B, Silver Palms');
-  const [line2, setLine2] = useState('Connaught Place');
-  const [city, setCity] = useState('New Delhi');
-  const [state, setState] = useState('Delhi');
-  const [postalCode, setPostalCode] = useState('110001');
+  const location = useLocation();
+  const prefill = (location.state as any) || {};
+
+  // Address state (prefilled only if navigated from Serviceability tab)
+  const [line1, setLine1] = useState(() => prefill.prefillAddress || '');
+  const [line2, setLine2] = useState('');
+  const [city, setCity] = useState(() => prefill.prefillCity || '');
+  const [state, setState] = useState(() => prefill.prefillState || '');
+  const [postalCode, setPostalCode] = useState(() => prefill.prefillPincode || '');
   const [country, setCountry] = useState('India');
 
   // Dropshipper Serviceability & Carrier Shipping State
-  const [warehousePincode, setWarehousePincode] = useState(DEFAULT_WAREHOUSE_PINCODE);
+  const [warehousePincode, setWarehousePincode] = useState(() => prefill.prefillWarehouse || DEFAULT_WAREHOUSE_PINCODE);
   const [selectedShippingPaymentMode, setSelectedShippingPaymentMode] =
     useState<SelectedShippingPaymentMode>('prepaid');
   const [selectedShippingQuote, setSelectedShippingQuote] =
-    useState<ServiceabilityQuote | null>(null);
+    useState<ServiceabilityQuote | null>(() => prefill.prefillSelectedQuote || null);
   const [serviceabilityResponse, setServiceabilityResponse] =
     useState<ServiceabilityCheckResponse | null>(null);
 
-  const [notes, setNotes] = useState('Handle with care. Leave at package locker if unavailable.');
+  const [notes, setNotes] = useState('');
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<any | null>(null);
+
+  // ── Live Quote (POST /orders/quote) ───────────────────────────
+  const [liveQuote, setLiveQuote] = useState<OrderQuoteResponse | null>(null);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper: extract bare product code from SKU (e.g. "SKU-2928-1" → "2928-1")
+  const extractProductCode = (sku: string): string => sku.replace(/^SKU-/i, '');
 
   // Sync if pre-selected product changes from store
   useEffect(() => {
@@ -136,8 +138,55 @@ export const CreateOrderForm: React.FC = () => {
         if (exists) return prev;
         return [...prev, { product: selectedProductForCreate, quantity: 1 }];
       });
+      // Clear from store so it does not persist on subsequent visits
+      setSelectedProductForCreate(null);
     }
-  }, [selectedProductForCreate]);
+  }, [selectedProductForCreate, setSelectedProductForCreate]);
+
+  // Load real catalog products if not yet loaded in store
+  useEffect(() => {
+    if (products.length === 0) {
+      productsService.getProducts();
+    }
+  }, [products.length]);
+
+  // ── Debounced POST /orders/quote ─────────────────────────────
+  // Fires 600ms after items or pincode change if pincode is a valid 6-digit code.
+  useEffect(() => {
+    if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current);
+
+    const pincode = postalCode.trim();
+    const hasItems = orderItems.length > 0;
+    const validPin = /^\d{6}$/.test(pincode);
+
+    if (!hasItems || !validPin) {
+      setLiveQuote(null);
+      return;
+    }
+
+    quoteTimerRef.current = setTimeout(async () => {
+      setIsQuoteLoading(true);
+      try {
+        const quotePayload = {
+          items: orderItems.map((it) => ({
+            productCode: extractProductCode(it.product.sku),
+            quantity: it.quantity
+          })),
+          customerPincode: pincode,
+          warehousePincode: warehousePincode
+        };
+        const quote = await ordersService.getOrderQuote(quotePayload);
+        setLiveQuote(quote);
+      } catch (err) {
+        console.warn('Quote fetch failed, using local calculation:', err);
+        setLiveQuote(null);
+      } finally {
+        setIsQuoteLoading(false);
+      }
+    }, 600);
+
+    return () => { if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current); };
+  }, [orderItems, postalCode, warehousePincode]);
 
   // Close search suggestions on click outside
   useEffect(() => {
@@ -157,14 +206,15 @@ export const CreateOrderForm: React.FC = () => {
     const codeQ = productCodeQuery.trim().toLowerCase();
 
     return products.filter((p) => {
+      const catName = typeof p.category === 'object' && p.category !== null ? (p.category as any)?.name || '' : (p.category || '');
       const matchesName =
         !nameQ ||
-        p.name.toLowerCase().includes(nameQ) ||
-        p.category.toLowerCase().includes(nameQ) ||
-        p.tags.some((t) => t.toLowerCase().includes(nameQ));
+        (p.name || '').toLowerCase().includes(nameQ) ||
+        catName.toLowerCase().includes(nameQ) ||
+        (Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(nameQ)));
 
       const matchesCode =
-        !codeQ || p.sku.toLowerCase().includes(codeQ);
+        !codeQ || (p.sku || '').toLowerCase().includes(codeQ);
 
       return matchesName && matchesCode;
     });
@@ -352,7 +402,7 @@ export const CreateOrderForm: React.FC = () => {
       // 1. Prepare backend payload matching POST /api/dropshipper/orders
       const orderPayload = {
         items: orderItems.map((item) => ({
-          productId: item.product.id,
+          productCode: extractProductCode(item.product.sku), // backend needs "2928-1" not "SKU-2928-1"
           sku: item.product.sku,
           quantity: item.quantity
         })),
@@ -371,6 +421,7 @@ export const CreateOrderForm: React.FC = () => {
         },
         customerPincode: postalCode.trim(),
         warehousePincode: warehousePincode,
+        paymentMethod: 'online' as const,
         notes: notes.trim() || undefined
       };
 
@@ -432,7 +483,7 @@ export const CreateOrderForm: React.FC = () => {
             if (backendResponse.orderNumber || backendResponse.orderId) {
               newOrder.orderNumber = backendResponse.orderNumber || backendResponse.orderId;
             }
-            newOrder.status = 'confirmed';
+            newOrder.status = 'approved';
             setSubmittedOrder(newOrder);
 
             try {
@@ -512,7 +563,7 @@ export const CreateOrderForm: React.FC = () => {
             );
 
             newOrder.orderNumber = fallbackOrderId;
-            newOrder.status = 'confirmed';
+            newOrder.status = 'approved';
             setSubmittedOrder(newOrder);
 
             try {
@@ -561,7 +612,7 @@ export const CreateOrderForm: React.FC = () => {
   const handleResetForm = () => {
     setSubmittedOrder(null);
     setSelectedProductForCreate(null);
-    setOrderItems(products.length > 0 ? [{ product: products[0], quantity: 1 }] : []);
+    setOrderItems([]);
     setSearchNameQuery('');
     setProductCodeQuery('');
     setCustomerName('');
@@ -571,49 +622,9 @@ export const CreateOrderForm: React.FC = () => {
     setLine2('');
     setCity('');
     setState('');
-    setPostalCode('110001');
+    setPostalCode('');
     setNotes('');
     setErrors({});
-  };
-
-  // Quick Template Fillers
-  const fillSampleTemplate = (type: 'delhi' | 'mumbai' | 'bangalore') => {
-    if (type === 'delhi') {
-      setCustomerName('Sarah Jenkins');
-      setCustomerEmail('sarah.jenkins@example.com');
-      setCustomerPhone('+91 98765 43210');
-      setLine1('Flat 402, Block B, Silver Palms');
-      setLine2('Connaught Place');
-      setCity('New Delhi');
-      setState('Delhi');
-      setPostalCode('110001');
-      setCountry('India');
-    } else if (type === 'mumbai') {
-      setCustomerName('Rahul Sharma');
-      setCustomerEmail('rahul.sharma@example.com');
-      setCustomerPhone('+91 98201 54321');
-      setLine1('701 Ocean View Towers');
-      setLine2('Marine Drive');
-      setCity('Mumbai');
-      setState('Maharashtra');
-      setPostalCode('400001');
-      setCountry('India');
-    } else if (type === 'bangalore') {
-      setCustomerName('Priya Nair');
-      setCustomerEmail('priya.nair@example.com');
-      setCustomerPhone('+91 97123 45678');
-      setLine1('12 Indiranagar 100ft Road');
-      setLine2('HAL 2nd Stage');
-      setCity('Bengaluru');
-      setState('Karnataka');
-      setPostalCode('560001');
-      setCountry('India');
-    }
-    addToast({
-      type: 'info',
-      title: 'Template Populated',
-      message: `Form filled with ${type.toUpperCase()} test customer data.`
-    });
   };
 
   // Volumetric weight calculation based on items
@@ -741,37 +752,17 @@ export const CreateOrderForm: React.FC = () => {
                 </div>
               </div>
 
-              {/* Quick Template Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" type="button" className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
-                    <span>⚡ Quick Templates</span>
-                    <ChevronDown className="w-3 h-3 text-slate-400" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64 shadow-soft-lg">
-                  <DropdownMenuLabel>Auto-Fill Dropship Test Customer</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('delhi')}>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
-                    <span>New Delhi (110001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('mumbai')}>
-                    <span className="w-2 h-2 rounded-full bg-blue-500 mr-2" />
-                    <span>Mumbai (400001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fillSampleTemplate('bangalore')}>
-                    <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-                    <span>Bengaluru Hub (560001)</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleResetForm} className="text-rose-600 focus:text-rose-700">
-                    <RotateCcw className="w-3.5 h-3.5 mr-2" />
-                    <span>Reset All Fields</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Reset Form Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={handleResetForm}
+                className="h-8 gap-1.5 bg-white text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-rose-600"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Form</span>
+              </Button>
             </div>
 
             {/* Search by Product Name & Product Code Bar */}
@@ -787,7 +778,7 @@ export const CreateOrderForm: React.FC = () => {
                     <div className="relative">
                       <Input
                         type="text"
-                        placeholder="Search product name (e.g. AeroPulse, Lumina...)"
+                        placeholder="Search product name (e.g. Color Naphthalene Balls, Toothbrush...)"
                         value={searchNameQuery}
                         onChange={(e) => {
                           setSearchNameQuery(e.target.value);
@@ -815,7 +806,7 @@ export const CreateOrderForm: React.FC = () => {
                     <div className="relative">
                       <Input
                         type="text"
-                        placeholder="e.g. AP-ANC-BLK-01"
+                        placeholder="e.g. SKU-2928-1"
                         value={productCodeQuery}
                         onChange={(e) => {
                           setProductCodeQuery(e.target.value);
@@ -996,7 +987,7 @@ export const CreateOrderForm: React.FC = () => {
                                 {item.product.sku}
                               </span>
                               <span className="text-[10px] text-slate-400 capitalize">
-                                {item.product.category}
+                                {typeof item.product.category === 'object' && item.product.category !== null ? (item.product.category as any)?.name : item.product.category}
                               </span>
                             </div>
                             <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate mt-0.5">
@@ -1103,7 +1094,7 @@ export const CreateOrderForm: React.FC = () => {
                   <Input
                     type="text"
                     maxLength={50}
-                    placeholder="First Name Middle Name Last Name (e.g. Sarah Marie Jenkins)"
+                    placeholder="Enter recipient full name"
                     value={customerName}
                     onChange={(e) => {
                       setCustomerName(e.target.value);
@@ -1118,7 +1109,7 @@ export const CreateOrderForm: React.FC = () => {
                   <FormMessage>{errors.customerName}</FormMessage>
                 ) : (
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Enter full recipient name: First Name, optional Middle Name, and Last Name (up to 50 characters / words).
+                    Enter full recipient name: First Name, optional Middle Name, and Last Name.
                   </p>
                 )}
               </FormItem>
@@ -1129,7 +1120,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="email"
-                    placeholder="sarah.jenkins@example.com"
+                    placeholder="name@example.com"
                     value={customerEmail}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1248,7 +1239,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. 742 Evergreen Terrace"
+                    placeholder="House / Flat No., Building Name, Street Area"
                     value={line1}
                     onChange={(e) => setLine1(e.target.value)}
                     className={errors.line1 ? 'border-rose-500' : ''}
@@ -1263,7 +1254,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. Apt 4B"
+                    placeholder="Apartment, Landmark, Suite (optional)"
                     value={line2}
                     onChange={(e) => setLine2(e.target.value)}
                   />
@@ -1276,7 +1267,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. Springfield"
+                    placeholder="City"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className={errors.city ? 'border-rose-500' : ''}
@@ -1291,7 +1282,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. OR or Ontario"
+                    placeholder="State / Province"
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     className={errors.state ? 'border-rose-500' : ''}
@@ -1306,7 +1297,7 @@ export const CreateOrderForm: React.FC = () => {
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="e.g. 97477"
+                    placeholder="6-digit Pincode"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     className={errors.postalCode ? 'border-rose-500' : ''}
@@ -1391,7 +1382,7 @@ export const CreateOrderForm: React.FC = () => {
 
             <textarea
               rows={3}
-              placeholder="e.g. Leave package in front porch box, no signature required."
+              placeholder="Special delivery instructions, carrier remarks or landmark directions (optional)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3.5 py-2.5 text-xs sm:text-sm rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-900"

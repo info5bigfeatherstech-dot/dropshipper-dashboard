@@ -69,11 +69,24 @@ export const TopBar: React.FC = () => {
 
   // Determine current page title
   const isProducts = location.pathname.startsWith('/products');
-  const isOrders = location.pathname.startsWith('/orders');
-  const pageTitle = isProducts ? 'Product Catalog' : 'Orders & Fulfillment';
+  const isServiceability = location.pathname === '/orders/serviceability';
+  const isCreateOrder = location.pathname === '/orders/create';
+
+  const pageTitle = isProducts
+    ? 'Product Catalog'
+    : isServiceability
+      ? 'Route Serviceability & Rates'
+      : isCreateOrder
+        ? 'Create New Order'
+        : 'Orders & Fulfillment';
+
   const pageSubtitle = isProducts
     ? 'Browse verified supplier inventory with locked wholesale dropship prices'
-    : 'Track customer orders, review approval status, and submit new shipments';
+    : isServiceability
+      ? 'Verify carrier delivery availability, calculate exact freight costs & compare Prepaid vs COD'
+      : isCreateOrder
+        ? 'Dispatch supplier verified inventory directly to your end customer'
+        : 'Track customer orders, review approval status, and submit new shipments';
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -82,10 +95,14 @@ export const TopBar: React.FC = () => {
   const matchedProducts = q
     ? products
         .filter(
-          (p) =>
-            p.name.toLowerCase().includes(q) ||
-            p.sku.toLowerCase().includes(q) ||
-            p.category.toLowerCase().includes(q)
+          (p) => {
+            const catName = typeof p.category === 'object' && p.category !== null ? (p.category as any)?.name || '' : (p.category || '');
+            return (
+              (p.name || '').toLowerCase().includes(q) ||
+              (p.sku || '').toLowerCase().includes(q) ||
+              catName.toLowerCase().includes(q)
+            );
+          }
         )
         .slice(0, 3)
     : [];
@@ -225,7 +242,7 @@ export const TopBar: React.FC = () => {
           type="button"
           onClick={() => setShowServiceabilityModal(true)}
           className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-300 hover:bg-brand-50/50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
-          title="Route Serviceability Checker (POST /api/dropshipper/serviceability/check)"
+          title="Check Delivery Serviceability"
         >
           <Truck className="w-3.5 h-3.5 text-brand-600" />
           <span>Check Delivery</span>

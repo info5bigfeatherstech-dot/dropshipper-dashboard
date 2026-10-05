@@ -14,15 +14,28 @@ interface ProductCardProps {
   onCreateOrder: (product: Product) => void;
 }
 
+const DEFAULT_IMAGE =
+  'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+
 export const ProductCard: React.FC<ProductCardProps> = React.memo(({
   product,
   viewMode = 'grid',
   onViewDetails,
   onCreateOrder
 }) => {
+  const dropshipPrice = Number(product.dropshipPrice || 0);
+  const suggestedRetailPrice = Number(product.suggestedRetailPrice || (dropshipPrice > 0 ? Math.round(dropshipPrice * 1.5) : 0));
+  const categoryLabel =
+    typeof product.category === 'object' && product.category !== null
+      ? (product.category as any)?.name || (product.category as any)?.slug || 'General'
+      : product.category || 'General';
+
+  const fulfillmentTime = product.specs?.fulfillmentTime || '24-48 Hours';
+  const thumbnail = product.thumbnail || DEFAULT_IMAGE;
+
   const { profit, percentage } = calculateMargin(
-    product.dropshipPrice,
-    product.suggestedRetailPrice
+    dropshipPrice,
+    suggestedRetailPrice
   );
 
   if (viewMode === 'list') {
@@ -36,12 +49,12 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
         <div className="flex items-center gap-4 min-w-0">
           <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
             <img
-              src={product.thumbnail}
-              alt={product.name}
+              src={thumbnail}
+              alt={product.name || 'Product'}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+                (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
               }}
             />
           </div>
@@ -49,22 +62,22 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Badge variant="secondary" className="font-semibold text-brand-600 bg-brand-50 dark:bg-brand-950/60 dark:text-brand-300">
-                {product.category}
+                {categoryLabel}
               </Badge>
               <span className="text-xs text-slate-400 font-mono">
-                {product.sku}
+                {product.sku || 'SKU-INVENTORY'}
               </span>
             </div>
             <h4
               onClick={() => onViewDetails(product)}
               className="text-sm sm:text-base font-semibold text-slate-900 dark:text-white truncate cursor-pointer hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
             >
-              {product.name}
+              {product.name || 'Untitled Product'}
             </h4>
             <div className="flex items-center gap-3 mt-1.5">
-              <StockBadge status={product.stockStatus} count={product.stock} />
+              <StockBadge status={product.stockStatus || 'in_stock'} count={product.stock ?? 10} />
               <span className="text-xs text-slate-500 dark:text-slate-400 hidden md:inline">
-                Fulfillment: {product.specs.fulfillmentTime}
+                Fulfillment: {fulfillmentTime}
               </span>
             </div>
           </div>
@@ -76,10 +89,10 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
               Dropship Price
             </p>
             <p className="text-lg font-bold text-brand-600 dark:text-brand-400">
-              {formatCurrency(product.dropshipPrice)}
+              {formatCurrency(dropshipPrice)}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              MSRP {formatCurrency(product.suggestedRetailPrice)}{' '}
+              MSRP {formatCurrency(suggestedRetailPrice)}{' '}
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                 (+{formatCurrency(profit)})
               </span>
@@ -128,23 +141,23 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
           className="relative aspect-[4/3] overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer"
         >
           <img
-            src={product.thumbnail}
-            alt={product.name}
+            src={thumbnail}
+            alt={product.name || 'Product'}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-108"
             loading="lazy"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+              (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
             }}
           />
 
           <div className="absolute top-3 left-3">
             <Badge variant="outline" className="text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-lg bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 backdrop-blur-md shadow-xs border-white/20">
-              {product.category}
+              {categoryLabel}
             </Badge>
           </div>
 
           <div className="absolute top-3 right-3">
-            <StockBadge status={product.stockStatus} count={product.stock} />
+            <StockBadge status={product.stockStatus || 'in_stock'} count={product.stock ?? 10} />
           </div>
 
           {/* Subtle hover quick view indicator */}
@@ -159,8 +172,8 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
         {/* Content */}
         <div className="p-4 sm:p-5">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1 font-mono">
-            <span>{product.sku}</span>
-            <span>★ {product.rating}</span>
+            <span>{product.sku || 'SKU-INVENTORY'}</span>
+            <span>★ {product.rating || 4.8}</span>
           </div>
 
           <h3
@@ -168,11 +181,11 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
             className="text-base font-semibold text-slate-900 dark:text-white line-clamp-1 hover:text-brand-600 dark:hover:text-brand-400 transition-colors cursor-pointer"
             title={product.name}
           >
-            {product.name}
+            {product.name || 'Untitled Product'}
           </h3>
 
           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1.5 mb-4 leading-relaxed">
-            {product.description}
+            {product.description || 'Verified supplier catalog inventory.'}
           </p>
 
           {/* Pricing Highlight */}
@@ -183,14 +196,14 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
                   Dropship Price
                 </span>
                 <div className="text-xl font-extrabold text-brand-600 dark:text-brand-400">
-                  {formatCurrency(product.dropshipPrice)}
+                  {formatCurrency(dropshipPrice)}
                 </div>
               </div>
 
               <div className="text-right">
                 <span className="text-[10px] text-slate-400">MSRP</span>
                 <div className="text-xs font-medium text-slate-500 dark:text-slate-400 line-through">
-                  {formatCurrency(product.suggestedRetailPrice)}
+                  {formatCurrency(suggestedRetailPrice)}
                 </div>
               </div>
             </div>
