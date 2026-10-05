@@ -56,6 +56,8 @@ import {
 
 export const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const newlyCreatedOrderId = (location.state as any)?.newlyCreatedOrderId;
   const {
     setSelectedOrderForDetail,
     addToast
@@ -452,6 +454,35 @@ export const OrdersPage: React.FC = () => {
         </div>
       </Card>
 
+      {/* Newly Placed Order Success Banner */}
+      {newlyCreatedOrderId && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-900 shadow-xs animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-sm text-emerald-950">
+                Payment Completed & Order Placed Successfully!
+              </p>
+              <p className="text-emerald-700 mt-0.5">
+                Order <span className="font-mono font-bold text-emerald-900">{newlyCreatedOrderId}</span> is now recorded and fetched live from the orders API.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchOrders(1, true)}
+            disabled={isLoading || isRefreshing}
+            className="bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-100 self-start sm:self-auto text-xs font-semibold gap-1.5 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh API</span>
+          </Button>
+        </div>
+      )}
+
       {/* Orders Data Table using shadcn Table, Card, and DropdownMenu */}
       <Card className="shadow-soft overflow-hidden">
         {isLoading ? (
@@ -500,16 +531,33 @@ export const OrdersPage: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedOrders.map((order) => (
-                  <TableRow
-                    key={order.id}
-                    onClick={() => setSelectedOrderForDetail(order)}
-                    className="cursor-pointer group"
-                  >
-                    {/* Order ID */}
-                    <TableCell className="font-mono font-bold text-brand-600 whitespace-nowrap px-4 sm:px-6">
-                      {order.orderNumber}
-                    </TableCell>
+                {paginatedOrders.map((order) => {
+                  const isNewlyCreated = Boolean(
+                    newlyCreatedOrderId &&
+                      (order.orderNumber === newlyCreatedOrderId || order.id === newlyCreatedOrderId)
+                  );
+
+                  return (
+                    <TableRow
+                      key={order.id}
+                      onClick={() => setSelectedOrderForDetail(order)}
+                      className={`cursor-pointer group transition-colors ${
+                        isNewlyCreated
+                          ? 'bg-emerald-50/80 hover:bg-emerald-100/70 border-l-4 border-l-emerald-500'
+                          : ''
+                      }`}
+                    >
+                      {/* Order ID */}
+                      <TableCell className="font-mono font-bold text-brand-600 whitespace-nowrap px-4 sm:px-6">
+                        <div className="flex items-center gap-2">
+                          <span>{order.orderNumber}</span>
+                          {isNewlyCreated && (
+                            <Badge className="bg-emerald-600 text-white text-[9px] font-bold uppercase tracking-wider py-0 px-1.5">
+                              Just Placed
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
 
                     {/* Product Info */}
                     <TableCell className="px-4">
@@ -557,7 +605,7 @@ export const OrdersPage: React.FC = () => {
                           {order.customer.name}
                         </p>
                         <p className="text-[11px] text-slate-400 truncate max-w-[150px]">
-                          {order.customer.email}
+                          {order.customer.email || order.customer.phone || '—'}
                         </p>
                       </div>
                     </TableCell>
@@ -570,9 +618,10 @@ export const OrdersPage: React.FC = () => {
                     {/* Amount */}
                     <TableCell className="px-4 font-bold text-slate-900 whitespace-nowrap">
                       {formatCurrency(
-                        order.items && order.items.length > 0
-                          ? order.items.reduce((acc, it) => acc + it.total, 0)
-                          : order.item.total
+                        order.totalAmount ??
+                        (order.items && order.items.length > 0
+                          ? order.items.reduce((acc, it) => acc + it.total, 0) + (order.shippingCharges || 0)
+                          : order.item.total + (order.shippingCharges || 0))
                       )}
                     </TableCell>
 
@@ -629,8 +678,9 @@ export const OrdersPage: React.FC = () => {
                         </DropdownMenu>
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
 
