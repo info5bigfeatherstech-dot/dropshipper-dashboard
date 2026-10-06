@@ -14,8 +14,10 @@ import {
   CheckSquare,
   Square,
   Images,
-  ExternalLink
+  ExternalLink,
+  MessageCircle
 } from 'lucide-react';
+import { shareProductToWhatsApp } from '../../utils/whatsappShare';
 
 interface ProductImageDownloadModalProps {
   product: Product | null;
@@ -56,6 +58,7 @@ export const ProductImageDownloadModal: React.FC<ProductImageDownloadModalProps>
 
   // Downloading state
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<{
     current: number;
     total: number;
@@ -243,6 +246,39 @@ export const ProductImageDownloadModal: React.FC<ProductImageDownloadModalProps>
         message: `Successfully saved ${successCount} product images.`
       });
       onClose();
+    }
+  };
+
+  // Share selected images to WhatsApp
+  const handleShareSelectedWhatsApp = async () => {
+    if (!product || isNoneSelected || isSharingWhatsApp || isDownloading) return;
+    setIsSharingWhatsApp(true);
+    const selectedImages = Array.from(selectedIndices)
+      .map((idx) => images[idx])
+      .filter(Boolean);
+
+    addToast({
+      type: 'info',
+      title: 'Preparing WhatsApp Share',
+      message: `Fetching ${selectedImages.length} image(s) for WhatsApp...`
+    });
+
+    try {
+      const ok = await shareProductToWhatsApp(product, {
+        images: selectedImages,
+        onToast: (toast) => addToast(toast)
+      });
+      if (ok) {
+        onClose();
+      }
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'Share Failed',
+        message: 'Could not share selected images.'
+      });
+    } finally {
+      setIsSharingWhatsApp(false);
     }
   };
 
@@ -462,9 +498,30 @@ export const ProductImageDownloadModal: React.FC<ProductImageDownloadModalProps>
               </Button>
             )}
 
+            {/* Share to WhatsApp with selected images */}
+            <Button
+              variant="outline"
+              onClick={handleShareSelectedWhatsApp}
+              disabled={isNoneSelected || isDownloading || isSharingWhatsApp}
+              title="Share selected photos with details to WhatsApp"
+              className="rounded-xl text-xs gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:border-emerald-300 transition-colors shadow-2xs"
+            >
+              {isSharingWhatsApp ? (
+                <>
+                  <RotateCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                  <span>Preparing...</span>
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Share ({selectedIndices.size}) to WhatsApp</span>
+                </>
+              )}
+            </Button>
+
             <Button
               onClick={handleDownloadSelected}
-              disabled={isNoneSelected || isDownloading}
+              disabled={isNoneSelected || isDownloading || isSharingWhatsApp}
               className="rounded-xl text-xs gap-1.5 font-bold shadow-soft"
             >
               {isDownloading ? (

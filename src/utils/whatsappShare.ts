@@ -89,43 +89,61 @@ export function formatWhatsAppProductText(product: Product): string {
 }
 
 /**
- * Shares product photo and formatted specifications to WhatsApp.
- * - Mobile / Modern browsers: uses navigator.share with files so image is attached with caption.
- * - Desktop Web Fallback: downloads clean photo, copies details to clipboard, and opens web.whatsapp.com.
+ * Shares multiple product photos and formatted specifications to WhatsApp.
+ * - Mobile / Modern browsers: uses navigator.share with files array so all images are attached together as an album with caption.
+ * - Desktop Web Fallback: downloads all clean photos, copies details to clipboard, and opens web.whatsapp.com.
  */
 export async function shareProductToWhatsApp(
   product: Product,
   options?: {
+    images?: string[];
     onToast?: (toast: { type: 'info' | 'success' | 'error'; title: string; message: string }) => void;
   }
 ): Promise<boolean> {
   const onToast = options?.onToast;
-  const primaryImage = product.thumbnail || (product.images && product.images[0]) || '';
+
+  // Determine images to share: specific passed array or all unique gallery images
+  const targetImages =
+    options?.images && options.images.length > 0
+      ? options.images
+      : Array.from(
+          new Set(
+            [
+              product.thumbnail,
+              ...(Array.isArray(product.images) ? product.images : [])
+            ].filter(Boolean) as string[]
+          )
+        );
+
   const messageText = formatWhatsAppProductText(product);
   const filePrefix = product.sku ? product.sku : 'product';
 
   try {
-    // 1. Fetch image as File Blob
-    const imageFile = await fetchProductImageFile(primaryImage, `${filePrefix}_photo`);
+    // 1. Fetch all requested images as File Blobs in parallel
+    const filePromises = targetImages.map((url, idx) =>
+      fetchProductImageFile(url, `${filePrefix}_photo_${idx + 1}`)
+    );
+    const fetchedFiles = await Promise.all(filePromises);
+    const imageFiles = fetchedFiles.filter(Boolean) as File[];
 
     // 2. Check if native Web Share with files is supported (Mobile Chrome/Safari, Modern Desktop)
     if (
       typeof navigator !== 'undefined' &&
       navigator.canShare &&
-      imageFile &&
-      navigator.canShare({ files: [imageFile] })
+      imageFiles.length > 0 &&
+      navigator.canShare({ files: imageFiles })
     ) {
       try {
         await navigator.share({
           title: product.name,
           text: messageText,
-          files: [imageFile]
+          files: imageFiles
         });
 
         onToast?.({
           type: 'success',
           title: 'Shared to WhatsApp',
-          message: 'Product image and specifications shared successfully.'
+          message: `Shared ${imageFiles.length} photo${imageFiles.length > 1 ? 's' : ''} and product details successfully.`
         });
         return true;
       } catch (err: any) {
@@ -145,9 +163,16 @@ export async function shareProductToWhatsApp(
       }
     } catch {}
 
-    // Download photo so user can easily drag it into the WhatsApp chat
-    if (primaryImage) {
-      downloadProductImage(primaryImage, `${filePrefix}_photo`, product.thumbnail);
+    // Download photos sequentially so user can easily drag them into the WhatsApp chat
+    for (let i = 0; i < targetImages.length; i++) {
+      downloadProductImage(
+        targetImages[i],
+        `${filePrefix}_photo_${i + 1}`,
+        product.thumbnail
+      );
+      if (i < targetImages.length - 1) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
     }
 
     // Open WhatsApp Web with prefilled message
@@ -157,7 +182,7 @@ export async function shareProductToWhatsApp(
     onToast?.({
       type: 'success',
       title: 'Opening WhatsApp Web',
-      message: 'Photo downloaded & product details copied to clipboard. Paste directly into your chat!'
+      message: `${targetImages.length} photo${targetImages.length > 1 ? 's' : ''} downloaded & details copied! Paste directly into chat.`
     });
 
     return true;
