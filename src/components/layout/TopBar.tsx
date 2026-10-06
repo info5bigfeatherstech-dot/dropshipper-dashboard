@@ -385,13 +385,6 @@ export const TopBar: React.FC = () => {
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem onClick={() => navigate('/admin/requests')}>
-              <Shield className="w-4 h-4 text-amber-600" />
-              <span>Admin Approvals</span>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
             <DropdownMenuItem
               onClick={async () => {
                 try {

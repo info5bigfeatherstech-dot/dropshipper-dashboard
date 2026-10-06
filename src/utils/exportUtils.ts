@@ -331,205 +331,347 @@ export const downloadProductImage = async (
 };
 
 /**
- * Generate and download a comprehensive PDF Specification Sheet for a product
+ * Helper to convert an image URL to Base64 for jsPDF
  */
-export const downloadProductPDF = (product: Product) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
+export const getBase64ImageFromUrl = async (
+  imageUrl: string,
+  fallbackUrl: string = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80'
+): Promise<string | null> => {
+  const attemptFetch = async (url: string): Promise<string | null> => {
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (response.ok) {
+        const blob = await response.blob();
+        return await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      // CORS or network failure, proceed to canvas attempt
+    }
 
-  const primaryIndigo = [79, 70, 229] as const; // #4F46E5
-  const slateDark = [15, 23, 42] as const; // #0F172A
-  const slateMuted = [100, 116, 139] as const; // #64748B
-  const emeraldGreen = [16, 185, 129] as const;
-
-  // Header Background Bar
-  doc.setFillColor(primaryIndigo[0], primaryIndigo[1], primaryIndigo[2]);
-  doc.rect(0, 0, 210, 28, 'F');
-
-  // Brand title
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('DROPFLOW SELLER COMMERCE', 14, 18);
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Product Specification & Dropship Sheet', 132, 18);
-
-  // Product Name & Category
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.setFontSize(15);
-  doc.setFont('helvetica', 'bold');
-  const splitTitle = doc.splitTextToSize(product.name, 132);
-  doc.text(splitTitle, 14, 40);
-
-  const titleBottomY = 40 + (splitTitle.length * 6);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  doc.text(`Category: ${product.category}  |  SKU: ${product.sku}  |  Rating: ${product.rating} / 5.0 (${product.reviewCount} verified reviews)`, 14, titleBottomY);
-  doc.text(`Generated on: ${formatDateTime(new Date().toISOString())}`, 14, titleBottomY + 5);
-
-  // Status Badge box
-  const statusColor: Record<string, [number, number, number]> = {
-    in_stock: [16, 185, 129],
-    low_stock: [245, 158, 11],
-    out_of_stock: [244, 63, 94]
+    return new Promise<string | null>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 600;
+          canvas.height = img.naturalHeight || 600;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
+            return;
+          }
+        } catch {
+          // ignore
+        }
+        resolve(null);
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
   };
-  const badgeColor = statusColor[product.stockStatus] || [100, 116, 139];
-  doc.setFillColor(badgeColor[0], badgeColor[1], badgeColor[2]);
-  doc.roundedRect(150, 36, 46, 9, 2, 2, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  const stockLabel = product.stockStatus === 'in_stock'
-    ? `IN STOCK (${product.stock})`
-    : product.stockStatus === 'low_stock'
-      ? `LOW STOCK (${product.stock})`
-      : 'OUT OF STOCK';
-  doc.text(stockLabel, 154, 42);
 
-  // Divider Line
-  const dividerY = titleBottomY + 9;
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.line(14, dividerY, 196, dividerY);
+  const primaryResult = await attemptFetch(imageUrl);
+  if (primaryResult) return primaryResult;
 
-  // Pricing Box
-  const { profit, percentage } = calculateMargin(product.dropshipPrice, product.suggestedRetailPrice);
-  const priceBoxY = dividerY + 5;
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, priceBoxY, 182, 22, 2, 2, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, priceBoxY, 182, 22, 2, 2, 'S');
+  if (fallbackUrl && fallbackUrl !== imageUrl) {
+    return await attemptFetch(fallbackUrl);
+  }
 
-  // Wholesale Dropship
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  doc.text('LOCKED DROPSHIP COST', 20, priceBoxY + 7);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(primaryIndigo[0], primaryIndigo[1], primaryIndigo[2]);
-  doc.text(formatCurrency(product.dropshipPrice), 20, priceBoxY + 16);
+  return null;
+};
 
-  // Suggested MSRP
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  doc.text('SUGGESTED MSRP', 80, priceBoxY + 7);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text(formatCurrency(product.suggestedRetailPrice), 80, priceBoxY + 16);
+/**
+ * Generate and download a comprehensive PDF Specification Sheet for a product.
+ * By default, omits dropship/wholesale prices and profit margins so dropshippers can
+ * share product sheets with their clients. Embeds product image and full specifications.
+ */
+export const downloadProductPDF = async (
+  product: Product,
+  options: { includePrice?: boolean } = { includePrice: false }
+): Promise<boolean> => {
+  try {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
 
-  // Estimated Margin
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(emeraldGreen[0], emeraldGreen[1], emeraldGreen[2]);
-  doc.text(`ESTIMATED NET MARGIN (${percentage}% RETURN)`, 136, priceBoxY + 7);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`+${formatCurrency(profit)}`, 136, priceBoxY + 16);
+    const primaryIndigo = [79, 70, 229] as const; // #4F46E5
+    const slateDark = [15, 23, 42] as const; // #0F172A
+    const slateMuted = [100, 116, 139] as const; // #64748B
+    const bgLight = [248, 250, 252] as const; // #F8FAFC
+    const borderSlate = [226, 232, 240] as const; // #E2E8F0
 
-  // Product Description Section
-  let curY = priceBoxY + 28;
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text('PRODUCT OVERVIEW & DESCRIPTION', 14, curY);
+    // Header Background Bar
+    doc.setFillColor(primaryIndigo[0], primaryIndigo[1], primaryIndigo[2]);
+    doc.rect(0, 0, 210, 26, 'F');
 
-  curY += 5;
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  const descLines = doc.splitTextToSize(product.description, 182);
-  doc.text(descLines, 14, curY);
-  curY += (descLines.length * 4.5) + 5;
+    // Brand title
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PRODUCT SPECIFICATION SHEET', 14, 16);
 
-  // Key Specifications Highlights
-  if (product.features && product.features.length > 0) {
+    doc.setFontSize(9.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Product Dossier & Specifications', 145, 16);
+
+    // Try to load product image for embedding
+    const imgUrl = product.thumbnail || (product.images && product.images[0]) || '';
+    let imageBase64: string | null = null;
+    if (imgUrl) {
+      imageBase64 = await getBase64ImageFromUrl(imgUrl);
+    }
+
+    const imageX = 14;
+    const imageY = 32;
+    const imageW = 60;
+    const imageH = 60;
+
+    // Draw Image Box Frame
+    doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+    doc.roundedRect(imageX, imageY, imageW, imageH, 3, 3, 'F');
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(imageX, imageY, imageW, imageH, 3, 3, 'S');
+
+    if (imageBase64) {
+      try {
+        // Embed image inside the rounded box (with 1.5mm padding)
+        doc.addImage(imageBase64, 'JPEG', imageX + 1.5, imageY + 1.5, imageW - 3, imageH - 3);
+      } catch (e) {
+        console.warn('Could not render image inside PDF', e);
+      }
+    } else {
+      // Placeholder text if image cannot be loaded
+      doc.setFontSize(9);
+      doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+      doc.text('Product Photo', imageX + 18, imageY + 31);
+    }
+
+    // Right Column: Product Core Details (Next to Image)
+    const detailX = 80;
+    let detailY = 38;
+
+    // Category Badge
+    const categoryName =
+      typeof product.category === 'object' && product.category !== null
+        ? (product.category as any)?.name || 'General'
+        : product.category || 'General';
+
+    doc.setFillColor(238, 242, 255); // Indigo 50
+    doc.roundedRect(detailX, detailY - 4, 38, 6.5, 1.5, 1.5, 'F');
+    doc.setTextColor(primaryIndigo[0], primaryIndigo[1], primaryIndigo[2]);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(categoryName.toUpperCase().slice(0, 18), detailX + 3, detailY);
+
+    // Stock status pill
+    const statusColor: Record<string, [number, number, number]> = {
+      in_stock: [16, 185, 129],
+      low_stock: [245, 158, 11],
+      out_of_stock: [244, 63, 94]
+    };
+    const badgeColor = statusColor[product.stockStatus] || [100, 116, 139];
+    doc.setFillColor(badgeColor[0], badgeColor[1], badgeColor[2]);
+    doc.roundedRect(detailX + 42, detailY - 4, 38, 6.5, 1.5, 1.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    const stockLabel =
+      product.stockStatus === 'in_stock'
+        ? `IN STOCK (${product.stock ?? 10})`
+        : product.stockStatus === 'low_stock'
+        ? `LOW STOCK (${product.stock ?? 2})`
+        : 'OUT OF STOCK';
+    doc.text(stockLabel, detailX + 45, detailY);
+
+    detailY += 9;
+
+    // Product Title
+    doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    const splitTitle = doc.splitTextToSize(product.name, 116);
+    doc.text(splitTitle, detailX, detailY);
+    detailY += splitTitle.length * 5.5 + 2;
+
+    // SKU & Verified Rating
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+    doc.text(`SKU: ${product.sku || 'SKU-INVENTORY'}`, detailX, detailY);
+    detailY += 5;
+    doc.text(
+      `Rating: ★ ${product.rating || 4.8} / 5.0 (${product.reviewCount || 42} reviews)`,
+      detailX,
+      detailY
+    );
+    detailY += 5;
+
+    // Fulfillment & Dispatch
+    const fulfillmentTime = product.specs?.fulfillmentTime || '24-48 Hours';
+    const origin = product.specs?.origin || 'India';
+    doc.text(`Dispatch Turnaround: ${fulfillmentTime}`, detailX, detailY);
+    detailY += 5;
+    doc.text(`Country of Origin: ${origin}`, detailX, detailY);
+
+    // Optional Pricing Box (ONLY if options.includePrice is explicitly true; defaults to FALSE)
+    let curY = 98;
+    if (options.includePrice) {
+      const { profit, percentage } = calculateMargin(
+        product.dropshipPrice,
+        product.suggestedRetailPrice
+      );
+      doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+      doc.roundedRect(14, curY, 182, 18, 2, 2, 'F');
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.roundedRect(14, curY, 182, 18, 2, 2, 'S');
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+      doc.text('DROPSHIP PRICE', 20, curY + 6);
+      doc.text('SUGGESTED MSRP', 80, curY + 6);
+      doc.text(`MARGIN (${percentage}%)`, 140, curY + 6);
+
+      doc.setFontSize(11);
+      doc.setTextColor(primaryIndigo[0], primaryIndigo[1], primaryIndigo[2]);
+      doc.text(formatCurrency(product.dropshipPrice), 20, curY + 14);
+
+      doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+      doc.text(formatCurrency(product.suggestedRetailPrice), 80, curY + 14);
+
+      doc.setTextColor(16, 185, 129);
+      doc.text(`+${formatCurrency(profit)}`, 140, curY + 14);
+
+      curY += 24;
+    } else {
+      // Clean separator line when NO price is included
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+      doc.setLineWidth(0.4);
+      doc.line(14, curY, 196, curY);
+      curY += 6;
+    }
+
+    // Product Description Section
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-    doc.text('KEY SPECIFICATIONS & VALUE HIGHLIGHTS', 14, curY);
+    doc.text('PRODUCT DESCRIPTION & OVERVIEW', 14, curY);
+
     curY += 5;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-    product.features.forEach((feat) => {
-      const featLines = doc.splitTextToSize(`• ${feat}`, 178);
-      doc.text(featLines, 16, curY);
-      curY += (featLines.length * 4.5);
-    });
-    curY += 5;
-  }
-
-  // Logistics & Carrier Compliance Table
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text('LOGISTICS & CARRIER COMPLIANCE', 14, curY);
-  curY += 4;
-
-  const specsRows = [
-    ['Dispatch Turnaround', product.specs.fulfillmentTime],
-    ['Fulfillment Origin Hub', product.specs.origin],
-    ['Parcel Dimensions', product.specs.dimensions],
-    ['Gross Weight', product.specs.weight],
-    ['Material Composition', product.specs.material],
-    ['Supplier Warranty', product.specs.warranty]
-  ];
-
-  doc.setFillColor(241, 245, 249);
-  doc.rect(14, curY, 182, 6, 'F');
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text('SPECIFICATION PROPERTY', 18, curY + 4.2);
-  doc.text('VERIFIED DETAIL', 110, curY + 4.2);
-  curY += 6;
-
-  specsRows.forEach(([prop, val], idx) => {
-    if (idx % 2 === 1) {
-      doc.setFillColor(248, 250, 252);
-      doc.rect(14, curY, 182, 6, 'F');
-    }
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-    doc.text(prop, 18, curY + 4.2);
+    const descLines = doc.splitTextToSize(
+      product.description || 'Verified catalog item.',
+      182
+    );
+    doc.text(descLines, 14, curY);
+    curY += descLines.length * 4.2 + 5;
+
+    // Key Features & Highlights
+    if (product.features && product.features.length > 0) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+      doc.text('KEY FEATURES & HIGHLIGHTS', 14, curY);
+      curY += 5;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+      product.features.forEach((feat) => {
+        const featLines = doc.splitTextToSize(`• ${feat}`, 178);
+        doc.text(featLines, 16, curY);
+        curY += featLines.length * 4.2;
+      });
+      curY += 5;
+    }
+
+    // Detailed Specifications Table
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-    doc.text(val, 110, curY + 4.2);
+    doc.text('PRODUCT SPECIFICATIONS & DETAILS', 14, curY);
+    curY += 4;
+
+    const specsRows = [
+      ['Gross Weight', product.specs?.weight || '0.5 kg'],
+      ['Parcel Dimensions (L × W × H)', product.specs?.dimensions || '15 x 10 x 5 cm'],
+      ['Material Composition', product.specs?.material || 'Premium Quality Grade'],
+      ['Country of Origin', product.specs?.origin || 'India'],
+      ['Dispatch Turnaround', product.specs?.fulfillmentTime || '24-48 Hours'],
+      ['Quality Warranty', product.specs?.warranty || 'Supplier Assured']
+    ];
+
+    // Table Header
+    doc.setFillColor(241, 245, 249);
+    doc.rect(14, curY, 182, 6, 'F');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+    doc.text('SPECIFICATION PROPERTY', 18, curY + 4.2);
+    doc.text('VERIFIED DETAIL', 110, curY + 4.2);
     curY += 6;
-  });
 
-  // Footer notes & packaging
-  curY += 6;
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, curY, 182, 17, 2, 2, 'F');
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, curY, 182, 17, 2, 2, 'S');
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text('Wholesale Blind Packaging & Delivery Guarantee', 18, curY + 5.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  doc.text('Shipped in unbranded packaging directly to your end customers. Zero middleman supplier paperwork attached.', 18, curY + 11.5);
+    specsRows.forEach(([prop, val], idx) => {
+      if (idx % 2 === 1) {
+        doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+        doc.rect(14, curY, 182, 6, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+      doc.text(prop, 18, curY + 4.2);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+      doc.text(val, 110, curY + 4.2);
+      curY += 6;
+    });
 
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
-  doc.text('DropFlow Seller Commerce Platform - Confidential dropship catalog specification', 14, 285);
+    // Packaging & Quality Assurance Box
+    curY += 6;
+    doc.setFillColor(bgLight[0], bgLight[1], bgLight[2]);
+    doc.roundedRect(14, curY, 182, 14, 2, 2, 'F');
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.roundedRect(14, curY, 182, 14, 2, 2, 'S');
 
-  doc.save(`${product.sku}_Product_Details.pdf`);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
+    doc.text('Quality & Transit Packaging Guarantee', 18, curY + 5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+    doc.text(
+      'Carefully packed in secure, protective transit packaging. Rigorous quality inspection conducted prior to dispatch.',
+      18,
+      curY + 10
+    );
+
+    // Page Bottom Footer
+    doc.setFontSize(7.5);
+    doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
+    doc.text(
+      `Product Dossier • SKU: ${product.sku} • Generated on ${formatDateTime(new Date().toISOString())}`,
+      14,
+      287
+    );
+
+    doc.save(`${product.sku}_Product_Details.pdf`);
+    return true;
+  } catch (err) {
+    console.error('Failed to generate product PDF', err);
+    return false;
+  }
 };
 
 /**

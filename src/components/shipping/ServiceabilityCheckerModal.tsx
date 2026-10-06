@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ServiceabilityCheckResponse,
   SelectedShippingPaymentMode
@@ -59,6 +60,23 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
   const [result, setResult] = useState<ServiceabilityCheckResponse | null>(null);
   const [selectedQuoteMode, setSelectedQuoteMode] = useState<SelectedShippingPaymentMode>('prepaid');
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleRunCheck = async () => {
@@ -97,20 +115,23 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
     setShowTokenBar(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in-50">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in-50"
+      onClick={onClose}
+    >
       <div
-        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-soft-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-soft-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/40">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-brand-600 text-white flex items-center justify-center shadow-soft">
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 Dropshipper Route Serviceability
               </h3>
               <p className="text-xs text-slate-400">
@@ -121,7 +142,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -130,26 +151,9 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
           {/* Staff Auth Token Bar */}
-          <div className="flex items-center justify-between text-xs pb-1">
-            <div className="flex items-center gap-1.5 text-slate-500">
-              <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-              <span>Temporary Staff JWT Auth:</span>
-              <span className="font-mono text-[11px] text-slate-400">
-                {serviceabilityService.getStaffToken() ? 'Token Configured' : 'Dev Bypass Mode'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowTokenBar(!showTokenBar)}
-              className="text-brand-600 font-semibold hover:underline"
-            >
-              {showTokenBar ? 'Hide' : 'Configure Token'}
-            </button>
-          </div>
-
           {showTokenBar && (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
-              <label className="font-medium text-slate-700 block">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+              <label className="font-medium text-slate-700 dark:text-slate-300 block">
                 Staff Bearer Token (admin / product_manager / inventory_manager)
               </label>
               <div className="flex gap-2">
@@ -171,7 +175,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Customer Pincode */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Customer Delivery Pincode *
               </label>
               <Input
@@ -194,7 +198,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                     key={item.pin}
                     type="button"
                     onClick={() => setCustomerPin(item.pin)}
-                    className="font-mono px-1.5 py-0.5 rounded bg-slate-100 hover:bg-brand-50 hover:text-brand-600 transition-colors"
+                    className="font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
                   >
                     {item.pin} ({item.label})
                   </button>
@@ -204,7 +208,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
             {/* Warehouse Pincode */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Warehouse Pickup Pincode *
               </label>
               <Input
@@ -219,7 +223,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
             {/* Weight (Kg) */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Weight (Kg)
               </label>
               <Input
@@ -234,7 +238,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
             {/* Declared Order Amount (₹) */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Order Value (₹) — for COD fees
               </label>
               <Input
@@ -248,7 +252,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
             {/* Dimensions */}
             <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Package Dimensions (L × W × H in cm)
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -282,8 +286,8 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
           {/* Error Banner */}
           {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-              <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -309,38 +313,38 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
 
           {/* Results View */}
           {result && (
-            <div className="pt-2 border-t border-slate-100 space-y-4 animate-in fade-in-50">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-in fade-in-50">
               {/* Deliverable Alert */}
               {result.isDeliverable ? (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between flex-wrap gap-2">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
                       <CheckCircle2 className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
                         Route Serviceable ({result.warehousePincode} ➔ {result.customerPincode})
                       </span>
-                      <p className="text-[11px] text-emerald-700">
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
                         {result.message} via {result.shippingProvider.toUpperCase()}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 bg-emerald-100 px-3 py-1.5 rounded-xl">
-                    <Clock className="w-3.5 h-3.5 text-emerald-700" />
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-900/50 px-3 py-1.5 rounded-xl">
+                    <Clock className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                     <span>ETA: {result.estimatedDays} Business Days</span>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3">
+                <div className="p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 rounded-2xl flex items-center gap-3">
                   <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
                     <XCircle className="w-4 h-4" />
                   </div>
                   <div>
-                    <span className="text-xs font-bold text-rose-950">
+                    <span className="text-xs font-bold text-rose-950 dark:text-rose-200">
                       Destination Not Serviceable
                     </span>
-                    <p className="text-[11px] text-rose-700">{result.message}</p>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-400">{result.message}</p>
                   </div>
                 </div>
               )}
@@ -348,7 +352,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
               {/* Quote Cards */}
               {result.isDeliverable && result.quotes && (
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-800">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
                     Carrier Rate Quotes Comparison
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -358,13 +362,13 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                         onClick={() => setSelectedQuoteMode('prepaid')}
                         className={`p-4 rounded-2xl border cursor-pointer transition-all ${
                           selectedQuoteMode === 'prepaid'
-                            ? 'bg-brand-50/50 border-brand-500 ring-2 ring-brand-500/20'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
+                            ? 'bg-brand-50/50 dark:bg-brand-950/40 border-brand-500 ring-2 ring-brand-500/20'
+                            : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                            <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <CreditCard className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                             Prepaid Delivery
                           </span>
                           {selectedQuoteMode === 'prepaid' && (
@@ -373,27 +377,27 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xl font-black text-slate-900">
+                        <div className="text-xl font-black text-slate-900 dark:text-white">
                           {formatCurrency(result.quotes.prepaid.deliveryCharges)}
                         </div>
-                        <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+                        <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
                           <div className="flex justify-between">
                             <span>Freight:</span>
-                            <span className="font-mono">{formatCurrency(result.quotes.prepaid.freightInr)}</span>
+                            <span className="font-mono text-slate-800 dark:text-slate-200">{formatCurrency(result.quotes.prepaid.freightInr)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>COD Fee:</span>
-                            <span className="font-mono text-emerald-600">₹0</span>
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400">₹0</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Courier:</span>
-                            <span className="font-medium truncate max-w-[120px]">
+                            <span className="font-medium truncate max-w-[120px] text-slate-800 dark:text-slate-200">
                               {result.quotes.prepaid.courierName}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span>ETA:</span>
-                            <span className="font-medium">{result.quotes.prepaid.estimatedDays} Days</span>
+                            <span className="font-medium text-slate-800 dark:text-slate-200">{result.quotes.prepaid.estimatedDays} Days</span>
                           </div>
                         </div>
                       </div>
@@ -405,13 +409,13 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                         onClick={() => setSelectedQuoteMode('cod')}
                         className={`p-4 rounded-2xl border cursor-pointer transition-all ${
                           selectedQuoteMode === 'cod'
-                            ? 'bg-brand-50/50 border-brand-500 ring-2 ring-brand-500/20'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
+                            ? 'bg-brand-50/50 dark:bg-brand-950/40 border-brand-500 ring-2 ring-brand-500/20'
+                            : 'bg-white dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                            <Banknote className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Banknote className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                             Cash on Delivery (COD)
                           </span>
                           {selectedQuoteMode === 'cod' && (
@@ -420,29 +424,29 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xl font-black text-slate-900">
+                        <div className="text-xl font-black text-slate-900 dark:text-white">
                           {formatCurrency(result.quotes.cod.deliveryCharges)}
                         </div>
-                        <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+                        <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
                           <div className="flex justify-between">
                             <span>Freight:</span>
-                            <span className="font-mono">{formatCurrency(result.quotes.cod.freightInr)}</span>
+                            <span className="font-mono text-slate-800 dark:text-slate-200">{formatCurrency(result.quotes.cod.freightInr)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>COD Fee:</span>
-                            <span className="font-mono font-semibold text-amber-600">
+                            <span className="font-mono font-semibold text-amber-600 dark:text-amber-400">
                               +{formatCurrency(result.quotes.cod.codFeeInr)}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span>Courier:</span>
-                            <span className="font-medium truncate max-w-[120px]">
+                            <span className="font-medium truncate max-w-[120px] text-slate-800 dark:text-slate-200">
                               {result.quotes.cod.courierName}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span>ETA:</span>
-                            <span className="font-medium">{result.quotes.cod.estimatedDays} Days</span>
+                            <span className="font-medium text-slate-800 dark:text-slate-200">{result.quotes.cod.estimatedDays} Days</span>
                           </div>
                         </div>
                       </div>
@@ -456,7 +460,7 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
                 <button
                   type="button"
                   onClick={() => setShowRawJson(!showRawJson)}
-                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                 >
                   <Code2 className="w-3.5 h-3.5" />
                   <span>{showRawJson ? 'Hide API Response JSON' : 'Inspect API Response JSON'}</span>
@@ -478,12 +482,13 @@ export const ServiceabilityCheckerModal: React.FC<ServiceabilityCheckerModalProp
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end">
-          <Button variant="outline" onClick={onClose} className="rounded-xl text-xs">
+        <div className="px-6 py-3.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+          <Button variant="outline" onClick={onClose} className="rounded-xl text-xs dark:border-slate-700 dark:text-slate-300">
             Close
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
