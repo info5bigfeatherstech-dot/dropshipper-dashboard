@@ -10,16 +10,15 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ActivatePage } from './pages/ActivatePage';
 import { AdminRequestsPage } from './pages/AdminRequestsPage';
-import { getAuthToken, isAuthBypassed } from './lib/api';
+import { hasDropshipperPanelSession, isAuthBypassed } from './lib/api';
 
+/**
+ * Panel routes require a real dropshipper JWT (activate → login).
+ * Bypass is local-dev only via VITE_DROPSHIPPER_AUTH_BYPASS.
+ */
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
-  if (isAuthBypassed()) {
-    return <>{children}</>;
-  }
-  const token = getAuthToken();
-
-  if (!token) {
+  if (!hasDropshipperPanelSession()) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   return <>{children}</>;
@@ -30,8 +29,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   if (isAuthBypassed()) {
     return <>{children}</>;
   }
-  const token = getAuthToken();
-  if (token) {
+  if (hasDropshipperPanelSession()) {
     return <Navigate to="/products" replace />;
   }
   return <>{children}</>;
@@ -51,6 +49,7 @@ export const App: React.FC = () => {
         />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/activate" element={<ActivatePage />} />
+        {/* Local staff helper for request queue — not the dropshipper seller panel */}
         <Route path="/admin" element={<Navigate to="/admin/requests" replace />} />
         <Route path="/admin/requests" element={<AdminRequestsPage />} />
 

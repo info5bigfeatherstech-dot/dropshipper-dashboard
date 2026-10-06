@@ -18,6 +18,11 @@ export type DropshipperRegisterPayload = {
   businessAddressProofUrl?: string;
 };
 
+export type DropshipperRegisterFiles = {
+  idProof: File;
+  businessAddressProof: File;
+};
+
 export type SubscriptionSettings = {
   channel: string;
   subscriptionAmountInr: number;
@@ -123,12 +128,32 @@ export const dropshipperAuthService = {
 
   /**
    * POST /auth/register/create-payment
-   * Full form submission + creates Razorpay order
+   * Multipart: form fields + idProof + businessAddressProof (Cloudinary on server).
    */
-  async createRegistrationPayment(body: DropshipperRegisterPayload) {
+  async createRegistrationPayment(
+    body: DropshipperRegisterPayload,
+    files: DropshipperRegisterFiles
+  ) {
+    const form = new FormData();
+    form.append('fullName', body.fullName);
+    form.append('email', body.email);
+    form.append('phone', body.phone);
+    form.append('whatsappNumber', body.whatsappNumber);
+    if (body.businessName) form.append('businessName', body.businessName);
+    form.append('permanentAddress', body.permanentAddress);
+    form.append('haveShop', body.haveShop ? 'true' : 'false');
+    form.append('businessAddress', body.businessAddress);
+    form.append('deliveryAddress', body.deliveryAddress);
+    form.append('sellingPlaceFrom', body.sellingPlaceFrom);
+    form.append('sellingZoneCity', body.sellingZoneCity);
+    form.append('productCategory', body.productCategory);
+    form.append('monthlyEstimatedPurchase', String(body.monthlyEstimatedPurchase));
+    form.append('idProof', files.idProof);
+    form.append('businessAddressProof', files.businessAddressProof);
+
     const res = await publicFetch('/api/dropshipper/auth/register/create-payment', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: form,
     });
     return parseJson(res);
   },

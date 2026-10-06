@@ -3,13 +3,60 @@ const ACCESS_TOKEN_KEY = 'dropshipper_access_token';
 const REFRESH_TOKEN_KEY = 'dropshipper_refresh_token';
 const USER_KEY = 'dropshipper_user';
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = String(token || '').replace(/^Bearer\s+/i, '').trim().split('.');
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True only for dropshipper portal access JWTs (portal=dropshipper, type=access).
+ * Rejects staff/admin/ecomm tokens and garbage strings.
+ */
+export function isDropshipperPortalAccessToken(token: string | null | undefined): boolean {
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return false;
+  if (String(payload.portal || '') !== 'dropshipper') return false;
+  if (String(payload.type || '') !== 'access') return false;
+  if (!payload.id) return false;
+  const exp = Number(payload.exp);
+  if (Number.isFinite(exp) && exp * 1000 <= Date.now()) return false;
+  return true;
+}
+
 export const getAuthToken = (): string => {
   if (typeof window === 'undefined') return '';
-  // Real dropshipper session first
-  const portalToken = localStorage.getItem(ACCESS_TOKEN_KEY) || localStorage.getItem('token');
-  if (portalToken) return portalToken;
 
-  // Dev bypass only — never treat staff JWT as a dropshipper login
+  const portalToken = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
+  if (isDropshipperPortalAccessToken(portalToken)) {
+    return portalToken;
+  }
+
+  // Legacy key — accept only if it is a real dropshipper portal token
+  const legacy = localStorage.getItem('token') || '';
+  if (isDropshipperPortalAccessToken(legacy)) {
+    try {
+      localStorage.setItem(ACCESS_TOKEN_KEY, legacy);
+    } catch {
+      /* ignore */
+    }
+    return legacy;
+  }
+
+  // Stale / staff / ecomm tokens must not unlock the panel
+  if (portalToken || legacy) {
+    clearDropshipperSession();
+  }
+
+  // Dev bypass only — never treat staff JWT as a dropshipper login in production builds
   if (isAuthBypassed()) {
     return (
       localStorage.getItem('dropshipper_staff_token') ||
@@ -20,11 +67,22 @@ export const getAuthToken = (): string => {
   return '';
 };
 
+/** Whether the user may enter the authenticated dashboard shell. */
+export const hasDropshipperPanelSession = (): boolean => {
+  if (isAuthBypassed()) return true;
+  return isDropshipperPortalAccessToken(getAuthToken());
+};
+
 export const setAuthToken = (token: string): void => {
   if (typeof window === 'undefined') return;
   if (token) {
     const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
+    if (!isDropshipperPortalAccessToken(cleanToken)) {
+      clearDropshipperSession();
+      return;
+    }
     localStorage.setItem(ACCESS_TOKEN_KEY, cleanToken);
+    // Keep legacy key in sync for older helpers, but getAuthToken validates claims
     localStorage.setItem('token', cleanToken);
   } else {
     clearDropshipperSession();
@@ -117,7 +175,7 @@ export async function apiFetch(
         });
         if (refreshRes.ok) {
           const refreshData = await refreshRes.json();
-          if (refreshData?.accessToken) {
+          if (refreshData?.accessToken && isDropshipperPortalAccessToken(refreshData.accessToken)) {
             setAuthToken(refreshData.accessToken);
             headers.set('Authorization', `Bearer ${refreshData.accessToken}`);
             res = await fetch(url, {
@@ -125,6 +183,8 @@ export async function apiFetch(
               headers,
               credentials: options.credentials || 'include',
             });
+          } else if (refreshRes.ok) {
+            clearDropshipperSession();
           }
         }
       } catch {

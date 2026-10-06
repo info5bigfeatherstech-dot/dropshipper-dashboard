@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { AuthPageShell } from '../components/layout/AuthPageShell';
 import {
   dropshipperAuthService,
   type DropshipperRegisterPayload,
@@ -18,9 +19,9 @@ import {
   Sparkles,
   RefreshCw,
   Building2,
-  Phone,
-  Mail,
-  UserCheck
+  UserCheck,
+  Upload,
+  FileImage,
 } from 'lucide-react';
 
 const EMPTY_FORM = {
@@ -37,9 +38,21 @@ const EMPTY_FORM = {
   sellingZoneCity: '',
   productCategory: '',
   monthlyEstimatedPurchase: '',
-  idProofUrl: '',
-  businessAddressProofUrl: '',
 };
+
+const PROOF_ACCEPT = 'image/jpeg,image/png,image/webp,image/jpg,application/pdf';
+const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+
+function assertProofFile(file: File | null, label: string): string | null {
+  if (!file) return `${label} is required`;
+  if (file.size > PROOF_MAX_BYTES) return `${label} must be 5MB or smaller`;
+  const okType =
+    file.type === 'application/pdf' ||
+    /^image\/(jpeg|jpg|png|webp)$/i.test(file.type) ||
+    /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+  if (!okType) return `${label} must be JPG, PNG, WEBP, or PDF`;
+  return null;
+}
 
 export const RegisterPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -52,6 +65,10 @@ export const RegisterPage: React.FC = () => {
     registrationOpen?: boolean;
   } | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [idProofFile, setIdProofFile] = useState<File | null>(null);
+  const [businessProofFile, setBusinessProofFile] = useState<File | null>(null);
+  const [idProofPreview, setIdProofPreview] = useState<string | null>(null);
+  const [businessProofPreview, setBusinessProofPreview] = useState<string | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -85,6 +102,39 @@ export const RegisterPage: React.FC = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const onPickProof = (
+    kind: 'id' | 'business',
+    file: File | null,
+    setFile: (f: File | null) => void,
+    previewUrl: string | null,
+    setPreview: (url: string | null) => void
+  ) => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreview(null);
+    if (!file) {
+      setFile(null);
+      return;
+    }
+    const err = assertProofFile(file, kind === 'id' ? 'ID proof' : 'Business address proof');
+    if (err) {
+      setError(err);
+      setFile(null);
+      return;
+    }
+    setError('');
+    setFile(file);
+    if (file.type.startsWith('image/')) {
+      setPreview(URL.createObjectURL(file));
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (idProofPreview) URL.revokeObjectURL(idProofPreview);
+      if (businessProofPreview) URL.revokeObjectURL(businessProofPreview);
+    };
+  }, [idProofPreview, businessProofPreview]);
+
   const amount = settings?.subscriptionAmountInr;
   const years = settings?.subscriptionYears || 1;
   const registrationOpen = settings?.registrationOpen !== false;
@@ -103,8 +153,6 @@ export const RegisterPage: React.FC = () => {
     sellingZoneCity: form.sellingZoneCity.trim(),
     productCategory: form.productCategory.trim(),
     monthlyEstimatedPurchase: form.monthlyEstimatedPurchase,
-    idProofUrl: form.idProofUrl.trim() || undefined,
-    businessAddressProofUrl: form.businessAddressProofUrl.trim() || undefined,
   });
 
   const validate = () => {
@@ -133,6 +181,16 @@ export const RegisterPage: React.FC = () => {
     }
     if (!/^\d{10}$/.test(form.whatsappNumber.replace(/\D/g, '').slice(-10))) {
       setError('WhatsApp must be a 10-digit Indian number');
+      return false;
+    }
+    const idErr = assertProofFile(idProofFile, 'ID proof');
+    if (idErr) {
+      setError(idErr);
+      return false;
+    }
+    const bizErr = assertProofFile(businessProofFile, 'Business address proof');
+    if (bizErr) {
+      setError(bizErr);
       return false;
     }
     return true;
@@ -207,8 +265,11 @@ export const RegisterPage: React.FC = () => {
       // Step 1: Pre-validate applicant & check fee preview (/auth/register/start)
       await dropshipperAuthService.startRegistration(payload);
 
-      // Step 2: Create order & Razorpay transaction (/auth/register/create-payment)
-      const payData = await dropshipperAuthService.createRegistrationPayment(payload);
+      // Step 2: Multipart + Cloudinary proofs + Razorpay order
+      const payData = await dropshipperAuthService.createRegistrationPayment(payload, {
+        idProof: idProofFile!,
+        businessAddressProof: businessProofFile!,
+      });
 
       // Step 3: Open Razorpay & verify signature (/auth/register/verify-payment)
       const verified = await openRazorpay(payData, payload);
@@ -225,6 +286,16 @@ export const RegisterPage: React.FC = () => {
       setStatusRequestId(reqId || '');
       setStatusIdentifier(payload.email || payload.phone || '');
       setForm(EMPTY_FORM);
+      setIdProofFile(null);
+      setBusinessProofFile(null);
+      setIdProofPreview((p) => {
+        if (p) URL.revokeObjectURL(p);
+        return null;
+      });
+      setBusinessProofPreview((p) => {
+        if (p) URL.revokeObjectURL(p);
+        return null;
+      });
     } catch (err: any) {
       const msg = err?.message || 'Registration / payment failed';
       if (msg !== 'Payment cancelled') setError(msg);
@@ -266,8 +337,8 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 px-4 py-10">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <AuthPageShell>
+      <div className="max-w-3xl mx-auto space-y-6 pb-10">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
           <div>
@@ -565,18 +636,15 @@ export const RegisterPage: React.FC = () => {
                 What happens next?
               </h4>
               <ol className="text-xs text-slate-600 dark:text-slate-300 list-decimal pl-4 space-y-1">
-                <li>Our admin team reviews your submitted documents and wholesaler details.</li>
+                <li>Our admin team reviews your submitted documents and details.</li>
                 <li>
-                  Once approved, you will receive an OTP via email to complete{' '}
-                  <Link
-                    to={`/activate?email=${encodeURIComponent(done.email || '')}&phone=${encodeURIComponent(done.phone || '')}`}
-                    className="text-indigo-600 dark:text-indigo-400 font-semibold underline"
-                  >
-                    Account Activation
-                  </Link>
-                  .
+                  Once approved, use{' '}
+                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                    Check Status → Activate Account
+                  </span>{' '}
+                  with the OTP emailed to you.
                 </li>
-                <li>Set your password, then login to start placing customer dropship orders!</li>
+                <li>Set your password, then login — dashboard opens only after login.</li>
               </ol>
             </div>
 
@@ -587,17 +655,17 @@ export const RegisterPage: React.FC = () => {
                 onClick={() => {
                   setDone(null);
                   setActiveTab('status');
-                  handleCheckStatus();
+                  if (done.requestId) {
+                    setStatusRequestId(done.requestId);
+                    setStatusIdentifier(done.email || done.phone || '');
+                  }
                 }}
               >
                 Track Status Now
               </Button>
-              <Link
-                to={`/activate?email=${encodeURIComponent(done.email || '')}&phone=${encodeURIComponent(done.phone || '')}`}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-soft"
-              >
-                Go to Activation <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              <p className="text-[11px] text-slate-500">
+                Activate &amp; login links unlock after admin approval (check status).
+              </p>
             </div>
           </div>
         ) : activeTab === 'register' ? (
@@ -798,36 +866,99 @@ export const RegisterPage: React.FC = () => {
               </div>
             </section>
 
-            {/* Section 4: Document URLs (Optional) */}
+            {/* Section 4: Verification documents (Cloudinary upload) */}
             <section className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
                 <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  4. Verification Documents (Optional)
+                  4. Verification Documents *
                 </h2>
               </div>
+              <p className="text-[11px] text-slate-500">
+                Upload clear images or PDF (max 5MB each). Files are stored securely on Cloudinary.
+              </p>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                    ID Proof URL (Aadhaar / PAN)
+                    ID Proof (Aadhaar / PAN) *
                   </label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.idProofUrl}
-                    onChange={(e) => setField('idProofUrl', e.target.value)}
-                    disabled={submitting || !registrationOpen}
-                  />
+                  <label
+                    className={`flex flex-col items-center justify-center gap-2 min-h-[120px] rounded-xl border-2 border-dashed px-3 py-4 cursor-pointer transition ${
+                      idProofFile
+                        ? 'border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-indigo-300'
+                    } ${submitting || !registrationOpen ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <input
+                      type="file"
+                      accept={PROOF_ACCEPT}
+                      className="hidden"
+                      disabled={submitting || !registrationOpen}
+                      onChange={(e) =>
+                        onPickProof(
+                          'id',
+                          e.target.files?.[0] || null,
+                          setIdProofFile,
+                          idProofPreview,
+                          setIdProofPreview
+                        )
+                      }
+                    />
+                    {idProofPreview ? (
+                      <img
+                        src={idProofPreview}
+                        alt="ID proof preview"
+                        className="max-h-24 rounded-lg object-contain"
+                      />
+                    ) : (
+                      <Upload className="w-5 h-5 text-slate-400" />
+                    )}
+                    <span className="text-xs text-slate-600 dark:text-slate-300 text-center flex items-center gap-1">
+                      <FileImage className="w-3.5 h-3.5" />
+                      {idProofFile ? idProofFile.name : 'Choose image or PDF'}
+                    </span>
+                  </label>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
-                    Business Address Proof URL (GST / Bill)
+                    Business Address Proof (GST / Bill) *
                   </label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.businessAddressProofUrl}
-                    onChange={(e) => setField('businessAddressProofUrl', e.target.value)}
-                    disabled={submitting || !registrationOpen}
-                  />
+                  <label
+                    className={`flex flex-col items-center justify-center gap-2 min-h-[120px] rounded-xl border-2 border-dashed px-3 py-4 cursor-pointer transition ${
+                      businessProofFile
+                        ? 'border-indigo-300 bg-indigo-50/50 dark:bg-indigo-950/30'
+                        : 'border-slate-200 dark:border-slate-600 hover:border-indigo-300'
+                    } ${submitting || !registrationOpen ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <input
+                      type="file"
+                      accept={PROOF_ACCEPT}
+                      className="hidden"
+                      disabled={submitting || !registrationOpen}
+                      onChange={(e) =>
+                        onPickProof(
+                          'business',
+                          e.target.files?.[0] || null,
+                          setBusinessProofFile,
+                          businessProofPreview,
+                          setBusinessProofPreview
+                        )
+                      }
+                    />
+                    {businessProofPreview ? (
+                      <img
+                        src={businessProofPreview}
+                        alt="Business proof preview"
+                        className="max-h-24 rounded-lg object-contain"
+                      />
+                    ) : (
+                      <Upload className="w-5 h-5 text-slate-400" />
+                    )}
+                    <span className="text-xs text-slate-600 dark:text-slate-300 text-center flex items-center gap-1">
+                      <FileImage className="w-3.5 h-3.5" />
+                      {businessProofFile ? businessProofFile.name : 'Choose image or PDF'}
+                    </span>
+                  </label>
                 </div>
               </div>
             </section>
@@ -857,7 +988,7 @@ export const RegisterPage: React.FC = () => {
                 {submitting ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                    Validating &amp; Launching Razorpay…
+                    Uploading proofs &amp; launching Razorpay…
                   </>
                 ) : (
                   `Pay ₹${amount != null ? Number(amount).toLocaleString('en-IN') : '800'} & Submit Application`
@@ -867,21 +998,24 @@ export const RegisterPage: React.FC = () => {
           </form>
         ) : null}
 
-        {/* Footer Navigation */}
+        {/* Footer Navigation — no dashboard link; activate only after approval, then login */}
         <div className="text-center text-xs text-slate-500 dark:text-slate-400 space-y-1 pt-2">
           <p>
-            Already approved?{' '}
+            Already approved by admin?{' '}
             <Link to="/activate" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
-              Activate Account with OTP
+              Activate with OTP
             </Link>
             {' · '}
             <Link to="/login" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
-              Login to Seller Portal
+              Login
             </Link>
+          </p>
+          <p className="text-[10px] text-slate-400">
+            Seller dashboard opens only after OTP activation and successful login.
           </p>
         </div>
       </div>
-    </div>
+    </AuthPageShell>
   );
 };
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { AuthPageShell } from '../components/layout/AuthPageShell';
 import { dropshipperAuthService } from '../services/dropshipperAuthService';
 
 function parseIdentifier(raw: string): { email?: string; phone?: string } {
@@ -129,8 +130,8 @@ export const ActivatePage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4 py-12">
-      <div className="max-w-md w-full space-y-6 bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700">
+    <AuthPageShell className="flex items-center">
+      <div className="max-w-md mx-auto w-full space-y-6 bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
             Activate account
@@ -297,7 +298,7 @@ export const ActivatePage: React.FC = () => {
           </p>
         </div>
       </div>
-    </div>
+    </AuthPageShell>
   );
 };
 

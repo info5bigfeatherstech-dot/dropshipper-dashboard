@@ -51,12 +51,48 @@ export interface CreateOrderPayload {
     sku?: string;
     quantity: number;
   }>;
-  customer: Customer;
-  shippingAddress: Address;
+  customer: Customer & {
+    fullName?: string;
+    houseNumber?: string;
+    building?: string;
+    area?: string;
+    landmark?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  address?: {
+    fullName?: string;
+    phone?: string;
+    houseNumber?: string;
+    building?: string;
+    area?: string;
+    landmark?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  shippingAddress: Address & {
+    fullName?: string;
+    phone?: string;
+    houseNumber?: string;
+    area?: string;
+    landmark?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+  };
   customerPincode: string;
   warehousePincode?: string;
   paymentMethod?: 'online' | 'cod';
   notes?: string;
+  addressLine1?: string;
+  addressLine2?: string;
 }
 
 /** Response from POST /orders */
@@ -191,27 +227,29 @@ export function normalizeBackendOrder(raw: any): Order {
     total: Number(raw.subtotal || raw.totalAmount || 0)
   };
 
-  // Map backend orderStatus to local OrderStatus
+  // Map backend orderStatus → local OrderStatus.
+  // Paid but still pending = awaiting admin confirm (NOT approved yet).
   const statusMap: Record<string, OrderStatus> = {
     pending: 'pending',
     confirmed: 'approved',
     approved: 'approved',
     processing: 'approved',
+    'ready to ship': 'approved',
+    ready_to_ship: 'approved',
     dispatched: 'shipped',
     shipped: 'shipped',
+    'in transit': 'shipped',
+    in_transit: 'shipped',
     delivered: 'delivered',
     cancelled: 'rejected',
+    canceled: 'rejected',
     rejected: 'rejected',
-    failed: 'rejected'
+    failed: 'rejected',
   };
 
   const rawStatus = (raw.orderStatus || raw.status || 'pending').toLowerCase();
-  const paymentStatus = (raw.paymentStatus || '').toLowerCase();
   let status: OrderStatus = statusMap[rawStatus] || 'pending';
-  // If payment status is marked paid/captured, treat as approved
-  if ((paymentStatus === 'paid' || paymentStatus === 'captured') && status === 'pending') {
-    status = 'approved';
-  }
+  // Do NOT promote paymentStatus=paid → approved. Admin must confirm first.
 
   const orderId = raw.orderId || raw.id || raw._id || ('OWB-DS-' + Math.floor(Math.random() * 900000 + 100000));
 

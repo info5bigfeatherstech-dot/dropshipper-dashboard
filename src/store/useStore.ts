@@ -248,48 +248,7 @@ export const useStore = create<StoreState>((set, get) => {
         ]
       }));
 
-      // --- DUMMY ADMIN LOGIC ---
-      // After ~10 seconds, auto-flip to 'approved' (or occasionally rejected for demo variety)
-      setTimeout(() => {
-        const currentOrders = get().orders;
-        const targetOrder = currentOrders.find((o) => o.id === newOrder.id);
-        if (targetOrder && targetOrder.status === 'pending') {
-          // 85% approval chance for demo
-          const isApproved = Math.random() > 0.15;
-          const updatedStatus: OrderStatus = isApproved ? 'approved' : 'rejected';
-          const updateTime = new Date().toISOString();
-          const note = isApproved
-            ? 'Stock reserved & dispatch scheduled at regional hub'
-            : 'Inventory capacity reached on supplier line';
-
-          get().updateOrderStatus(newOrder.id, updatedStatus, note);
-
-          // Trigger high-profile toast
-          get().addToast({
-            type: isApproved ? 'success' : 'error',
-            title: isApproved ? `Order ${orderNumber} Approved!` : `Order ${orderNumber} Rejected`,
-            message: isApproved
-              ? 'Admin approved your order. Routing to packaging.'
-              : 'Admin rejected order: ' + note,
-            duration: 6000
-          });
-
-          // Add notification
-          set((state) => ({
-            notifications: [
-              {
-                id: 'notif-' + Date.now(),
-                title: isApproved ? `Order Approved: ${orderNumber}` : `Order Rejected: ${orderNumber}`,
-                message: isApproved ? 'Ready for warehouse dispatch' : note,
-                time: 'Just now',
-                read: false,
-                type: 'approval'
-              },
-              ...state.notifications
-            ]
-          }));
-        }
-      }, 10000);
+      // No local auto-approve. Status updates come from GET /orders after admin confirms.
 
       return newOrder;
     },

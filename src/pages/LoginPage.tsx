@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { AuthPageShell } from '../components/layout/AuthPageShell';
 import { setDropshipperSession } from '../lib/api';
 import { dropshipperAuthService } from '../services/dropshipperAuthService';
 
@@ -66,8 +67,8 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-6 bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700">
+    <AuthPageShell className="flex items-center">
+      <div className="max-w-md mx-auto w-full space-y-6 bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700">
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 mb-3">
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -152,6 +153,6 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
       </div>
-    </div>
+    </AuthPageShell>
   );
 };

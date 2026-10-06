@@ -426,17 +426,25 @@ export const CreateOrderForm: React.FC = () => {
           name: customerName.trim(),
           email: customerEmail.trim(),
           phone: cleanPhone,
+          houseNumber: buildingNo.trim(),
+          building: buildingNo.trim() || undefined,
+          area: streetName.trim(),
+          landmark: landmark.trim() || undefined,
           addressLine1,
-          addressLine2
+          addressLine2,
+          city: city.trim(),
+          state: state.trim(),
+          postalCode: postalCode.trim(),
+          country: country.trim() || 'India'
         },
         addressLine1,
         addressLine2,
         address: {
           fullName: customerName.trim(),
           phone: cleanPhone,
-          houseNumber: buildingNo.trim() || '1',
-          building: buildingNo.trim() || '',
-          area: streetName.trim() || landmark.trim() || city.trim(),
+          houseNumber: buildingNo.trim(),
+          building: buildingNo.trim() || undefined,
+          area: streetName.trim(),
           landmark: landmark.trim() || undefined,
           addressLine1,
           addressLine2,
@@ -448,6 +456,9 @@ export const CreateOrderForm: React.FC = () => {
         shippingAddress: {
           fullName: customerName.trim(),
           phone: cleanPhone,
+          houseNumber: buildingNo.trim(),
+          area: streetName.trim(),
+          landmark: landmark.trim() || undefined,
           addressLine1,
           addressLine2,
           line1: addressLine1,
@@ -529,7 +540,8 @@ export const CreateOrderForm: React.FC = () => {
             if (backendResponse.orderNumber || backendResponse.orderId) {
               newOrder.orderNumber = backendResponse.orderNumber || backendResponse.orderId;
             }
-            newOrder.status = 'approved';
+            // Paid ≠ confirmed. Stays pending until admin confirms in Offer admin.
+            newOrder.status = 'pending';
 
             try {
               confetti({
@@ -541,8 +553,8 @@ export const CreateOrderForm: React.FC = () => {
 
             addToast({
               type: 'success',
-              title: 'Payment Successful & Order Placed',
-              message: `Order ${newOrder.orderNumber} confirmed! Redirecting to All Orders...`,
+              title: 'Payment Successful',
+              message: `Order ${newOrder.orderNumber} placed and awaiting admin confirmation.`,
               duration: 5000
             });
 
