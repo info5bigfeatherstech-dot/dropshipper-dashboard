@@ -1,9 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AddressServiceabilityChecker } from '../components/shipping/AddressServiceabilityChecker';
-import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { ArrowLeft, ShoppingBag, PlusCircle, Truck } from 'lucide-react';
+import { ArrowLeft, Truck } from 'lucide-react';
 
 export const ServiceabilityPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,25 +33,6 @@ export const ServiceabilityPage: React.FC = () => {
           <p className="text-sm text-slate-500 mt-1">
             Check real-time pincode courier coverage, transit TAT, and compare Prepaid vs COD freight charges before placing orders.
           </p>
-        </div>
-
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/orders')}
-            className="gap-2 rounded-xl text-xs font-semibold shadow-xs"
-          >
-            <ShoppingBag className="w-4 h-4 text-slate-400" />
-            <span>All Orders</span>
-          </Button>
-
-          <Button
-            onClick={() => navigate('/orders/create')}
-            className="gap-1.5 rounded-xl text-xs font-semibold shadow-soft"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Create Order</span>
-          </Button>
         </div>
       </div>
 

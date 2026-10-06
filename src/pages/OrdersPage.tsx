@@ -85,6 +85,8 @@ export const OrdersPage: React.FC = () => {
       setApiOrders(result.orders);
       setApiTotal(result.total);
       setApiTotalPages(result.totalPages);
+      useStore.getState().setOrders(result.orders);
+      useStore.getState().setTotalOrdersCount(result.total);
     } catch (err) {
       console.error('Failed to load orders:', err);
       addToast({ type: 'error', title: 'Failed to Load Orders', message: 'Could not fetch orders from server.' });

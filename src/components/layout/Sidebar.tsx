@@ -17,7 +17,7 @@ import {
 export const Sidebar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { sidebarCollapsed, toggleSidebar, orders } = useStore();
+  const { sidebarCollapsed, toggleSidebar, orders, totalOrdersCount, fetchOrders } = useStore();
 
   const isProductsActive = location.pathname.startsWith('/products');
   const isOrdersActive = location.pathname.startsWith('/orders');
@@ -27,12 +27,19 @@ export const Sidebar: React.FC = () => {
 
   const [ordersDropdownOpen, setOrdersDropdownOpen] = useState(true);
 
+  // Fetch orders from API on mount and whenever navigating back to orders
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders, location.pathname]);
+
   // Keep dropdown open when user navigates to any order route
   useEffect(() => {
     if (isOrdersActive) {
       setOrdersDropdownOpen(true);
     }
   }, [location.pathname, isOrdersActive]);
+
+  const orderCount = totalOrdersCount > 0 ? totalOrdersCount : orders.length;
 
   return (
     <aside
@@ -122,7 +129,7 @@ export const Sidebar: React.FC = () => {
               <>
                 <span className="flex-1 font-bold text-slate-800">Orders</span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-normal">
-                  {orders.length}
+                  {orderCount}
                 </span>
                 <ChevronDown
                   className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
@@ -160,13 +167,13 @@ export const Sidebar: React.FC = () => {
                       <ListOrdered className="w-4 h-4 shrink-0" />
                       <span className="flex-1">All Orders</span>
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold transition-all ${
                           isAllOrdersActive
                             ? 'bg-brand-500 text-white'
                             : 'bg-slate-100 text-slate-500'
                         }`}
                       >
-                        {orders.length}
+                        {orderCount}
                       </span>
                     </NavLink>
 

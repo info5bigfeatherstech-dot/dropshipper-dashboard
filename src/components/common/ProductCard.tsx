@@ -264,55 +264,7 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
                     <MoreVertical className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-72 p-2.5 z-50">
-                  {/* Header with image count and mini previews */}
-                  <div className="px-1.5 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                      <span className="flex items-center gap-1.5">
-                        <Images className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                        Product Images
-                      </span>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
-                        {productImages.length} {productImages.length === 1 ? 'image' : 'images'}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                      {productImages.slice(0, 4).map((img, idx) => (
-                        <div
-                          key={idx}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            downloadProductImage(img, `${product.sku}_img_${idx + 1}`, thumbnail);
-                            addToast({
-                              type: 'info',
-                              title: 'Downloading Image',
-                              message: `Saving image ${idx + 1}...`
-                            });
-                          }}
-                          title={`Click to download Image ${idx + 1}`}
-                          className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 group/thumb cursor-pointer hover:border-brand-500"
-                        >
-                          <img src={img} alt="" className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
-                            <Download className="w-3.5 h-3.5 text-white" />
-                          </div>
-                        </div>
-                      ))}
-                      {productImages.length > 4 && (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsImageModalOpen(true);
-                          }}
-                          title="View all images"
-                          className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-500 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
-                        >
-                          +{productImages.length - 4}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                <DropdownMenuContent align="end" className="w-64 p-1.5 z-50 shadow-soft-lg">
 
                   <DropdownMenuItem
                     onClick={(e) => {
@@ -446,86 +398,31 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
               }}
             />
 
-            <div className="absolute top-3 left-3 z-10">
-              <Badge
-                variant="outline"
-                className="text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-lg bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 backdrop-blur-md shadow-xs border-white/20"
-              >
-                {categoryLabel}
-              </Badge>
-            </div>
-
-            {/* Top Right: StockBadge and Three Dots Menu */}
-            <div
-              className="absolute top-3 right-3 flex items-center gap-1.5 z-20"
-              onClick={(e) => e.stopPropagation()}
-            >
+            {/* Top Left: Stock Status Badge */}
+            <div className="absolute top-3 left-3 z-20">
               <StockBadge
                 status={product.stockStatus || 'in_stock'}
                 count={product.stock ?? 10}
               />
+            </div>
 
-              {/* Three dots image menu */}
+            {/* Top Right: Three Dots Action Menu */}
+            <div
+              className="absolute top-3 right-3 z-20"
+              onClick={(e) => e.stopPropagation()}
+            >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     onClick={(e) => e.stopPropagation()}
                     className="w-7 h-7 rounded-lg bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-200 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-white dark:hover:bg-slate-850 shadow-xs backdrop-blur-md flex items-center justify-center transition-all border border-black/5 dark:border-white/10 cursor-pointer"
-                    title="Download images"
+                    title="Download options"
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-72 p-2.5 z-50">
-                  {/* Header with image count and mini previews ("selected image show images there") */}
-                  <div className="px-1.5 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                      <span className="flex items-center gap-1.5">
-                        <Images className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                        Product Images
-                      </span>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
-                        {productImages.length} {productImages.length === 1 ? 'image' : 'images'}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                      {productImages.slice(0, 4).map((img, idx) => (
-                        <div
-                          key={idx}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            downloadProductImage(img, `${product.sku}_img_${idx + 1}`, thumbnail);
-                            addToast({
-                              type: 'info',
-                              title: 'Downloading Image',
-                              message: `Saving image ${idx + 1}...`
-                            });
-                          }}
-                          title={`Click to download Image ${idx + 1}`}
-                          className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shrink-0 group/thumb cursor-pointer hover:border-brand-500"
-                        >
-                          <img src={img} alt="" className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
-                            <Download className="w-3.5 h-3.5 text-white" />
-                          </div>
-                        </div>
-                      ))}
-                      {productImages.length > 4 && (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsImageModalOpen(true);
-                          }}
-                          title="View all images"
-                          className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-500 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
-                        >
-                          +{productImages.length - 4}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                <DropdownMenuContent align="end" className="w-64 p-1.5 z-50 shadow-soft-lg">
 
                   {/* Option 1: Download One Image */}
                   <DropdownMenuItem
@@ -615,7 +512,7 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
             </div>
 
             {/* Subtle hover quick view indicator */}
-            <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/95 dark:bg-slate-900/95 text-xs font-semibold text-slate-800 dark:text-white backdrop-blur shadow-md transform translate-y-2 group-hover:translate-y-0 transition-transform">
                 <Eye className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
                 Quick Preview
@@ -625,9 +522,18 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
 
           {/* Content */}
           <div className="p-4 sm:p-5">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1 font-mono">
-              <span>{product.sku || 'SKU-INVENTORY'}</span>
-              <span>★ {product.rating || 4.8}</span>
+            {/* Category Badge & SKU */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <Badge
+                variant="secondary"
+                title={categoryLabel}
+                className="font-semibold text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 border border-brand-200/50 dark:border-brand-900/50 truncate max-w-[170px]"
+              >
+                {categoryLabel}
+              </Badge>
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-mono shrink-0">
+                {product.sku || 'SKU-INVENTORY'}
+              </span>
             </div>
 
             <h3

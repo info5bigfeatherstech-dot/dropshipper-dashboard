@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -19,6 +19,10 @@ export const Layout: React.FC = () => {
   const setSelectedOrderForDetail = useStore((state) => state.setSelectedOrderForDetail);
   const setSelectedProductForCreate = useStore((state) => state.setSelectedProductForCreate);
   const setActiveOrderTab = useStore((state) => state.setActiveOrderTab);
+
+  useEffect(() => {
+    useStore.getState().fetchOrders?.();
+  }, []);
 
   const handleCreateOrderFromProduct = useCallback((product: Product) => {
     setSelectedProductForCreate(product);

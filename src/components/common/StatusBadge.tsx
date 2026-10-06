@@ -75,23 +75,23 @@ export const StockBadge: React.FC<{ status: StockStatus; count?: number }> = Rea
   switch (status) {
     case 'in_stock':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          In Stock {count !== undefined && `(${count})`}
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50/95 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/80 shadow-xs backdrop-blur-md">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <span>In Stock {count !== undefined && `(${count})`}</span>
         </span>
       );
     case 'low_stock':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-          <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-          Low Stock {count !== undefined && `(${count})`}
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50/95 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/80 shadow-xs backdrop-blur-md">
+          <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span>Low Stock {count !== undefined && `(${count})`}</span>
         </span>
       );
     case 'out_of_stock':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
-          <XCircle className="w-3 h-3 text-rose-500" />
-          Out of Stock
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-50/95 dark:bg-rose-950/80 text-rose-700 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/80 shadow-xs backdrop-blur-md">
+          <XCircle className="w-3 h-3 text-rose-500 shrink-0" />
+          <span>Out of Stock</span>
         </span>
       );
   }

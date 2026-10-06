@@ -4,7 +4,8 @@ import { Package, ShoppingBag, PlusCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
 export const MobileBottomBar: React.FC = () => {
-  const { setActiveOrderTab } = useStore();
+  const { setActiveOrderTab, totalOrdersCount, orders } = useStore();
+  const orderCount = totalOrdersCount > 0 ? totalOrdersCount : orders.length;
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-6 py-2 shadow-lg">
@@ -47,7 +48,14 @@ export const MobileBottomBar: React.FC = () => {
             }`
           }
         >
-          <ShoppingBag className="w-5 h-5" />
+          <div className="relative">
+            <ShoppingBag className="w-5 h-5" />
+            {orderCount > 0 && (
+              <span className="absolute -top-1.5 -right-2.5 min-w-4 h-4 px-1 rounded-full bg-brand-600 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
+                {orderCount}
+              </span>
+            )}
+          </div>
           <span>Orders</span>
         </NavLink>
       </div>

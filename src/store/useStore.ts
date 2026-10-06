@@ -22,6 +22,10 @@ interface StoreState {
   products: Product[];
   setProducts: (products: Product[]) => void;
   orders: Order[];
+  setOrders: (orders: Order[]) => void;
+  totalOrdersCount: number;
+  setTotalOrdersCount: (count: number) => void;
+  fetchOrders: (silent?: boolean) => Promise<void>;
 
   // Navigation / Pre-selection
   activeOrderTab: 'all' | 'create';
@@ -86,6 +90,21 @@ export const useStore = create<StoreState>((set, get) => {
     products: [],
     setProducts: (products) => set({ products }),
     orders: [],
+    setOrders: (orders) => set({ orders }),
+    totalOrdersCount: 0,
+    setTotalOrdersCount: (count) => set({ totalOrdersCount: count }),
+    fetchOrders: async () => {
+      try {
+        const { ordersService } = await import('../services/ordersService');
+        const res = await ordersService.getOrders({ page: 1, limit: 50 });
+        set({
+          orders: res.orders,
+          totalOrdersCount: res.total
+        });
+      } catch (err) {
+        console.warn('Failed to fetch orders from server API:', err);
+      }
+    },
 
     activeOrderTab: 'all',
     setActiveOrderTab: (tab) => set({ activeOrderTab: tab }),

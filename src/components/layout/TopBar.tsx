@@ -37,6 +37,7 @@ export const TopBar: React.FC = () => {
     markAllNotificationsRead,
     products,
     orders,
+    totalOrdersCount,
     setSelectedProductForModal,
     setSelectedOrderForDetail,
     setActiveOrderTab
@@ -373,9 +374,16 @@ export const TopBar: React.FC = () => {
               <span>Sourcing Catalog</span>
             </DropdownMenuItem>
 
-            <DropdownMenuItem onClick={() => navigate('/orders')}>
-              <ShoppingBag className="w-4 h-4 text-brand-600" />
-              <span>All Orders</span>
+            <DropdownMenuItem onClick={() => navigate('/orders')} className="flex items-center justify-between cursor-pointer">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-brand-600" />
+                <span>All Orders</span>
+              </div>
+              {(totalOrdersCount > 0 || orders.length > 0) && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                  {totalOrdersCount > 0 ? totalOrdersCount : orders.length}
+                </span>
+              )}
             </DropdownMenuItem>
 
             <DropdownMenuItem onClick={() => navigate('/orders/create')}>

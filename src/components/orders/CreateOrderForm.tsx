@@ -558,7 +558,8 @@ export const CreateOrderForm: React.FC = () => {
               duration: 5000
             });
 
-            // Redirect immediately to All Orders page where GET /orders is hit
+            // Refresh store orders count and redirect immediately to All Orders page
+            useStore.getState().fetchOrders?.();
             setActiveOrderTab('all');
             navigate('/orders', { replace: true, state: { newlyCreatedOrderId: newOrder.orderNumber } });
           },
