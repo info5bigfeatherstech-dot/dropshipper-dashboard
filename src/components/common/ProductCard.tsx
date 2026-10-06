@@ -13,7 +13,9 @@ import {
   Download,
   Images,
   Layers,
-  FileText
+  FileText,
+  MessageCircle,
+  Loader2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -27,6 +29,7 @@ import {
   downloadAllProductImages,
   downloadProductPDF
 } from '../../utils/exportUtils';
+import { shareProductToWhatsApp } from '../../utils/whatsappShare';
 import { ProductImageDownloadModal } from '../products/ProductImageDownloadModal';
 
 interface ProductCardProps {
@@ -46,6 +49,7 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
   onCreateOrder
 }) => {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const addToast = useStore((state) => state.addToast);
 
   const dropshipPrice = Number(product.dropshipPrice || 0);
@@ -74,6 +78,30 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
     dropshipPrice,
     suggestedRetailPrice
   );
+
+  const handleShareWhatsApp = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (isSharingWhatsApp) return;
+    setIsSharingWhatsApp(true);
+    try {
+      addToast({
+        type: 'info',
+        title: 'Preparing WhatsApp Share',
+        message: 'Fetching photo and formatting product details...'
+      });
+      await shareProductToWhatsApp(product, {
+        onToast: (toast) => addToast(toast)
+      });
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Share Failed',
+        message: err?.message || 'Could not initiate WhatsApp share.'
+      });
+    } finally {
+      setIsSharingWhatsApp(false);
+    }
+  };
 
   const handleDownloadPDF = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -346,8 +374,53 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
                       </p>
                     </div>
                   </DropdownMenuItem>
+
+                  {/* Option: Share to WhatsApp (Photo + Details, No Prices) */}
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareWhatsApp(e);
+                    }}
+                    disabled={isSharingWhatsApp}
+                    className="flex items-center gap-2.5 py-2 cursor-pointer rounded-xl hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 border-t border-slate-100 dark:border-slate-800 mt-1 pt-2"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      {isSharingWhatsApp ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <MessageCircle className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>Share to WhatsApp</span>
+                        <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                          Image + Specs
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Send photo & customer description
+                      </p>
+                    </div>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShareWhatsApp}
+                disabled={isSharingWhatsApp}
+                title="Share Product with Photo & Specs to WhatsApp"
+                className="rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 shadow-2xs gap-1"
+              >
+                {isSharingWhatsApp ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                ) : (
+                  <MessageCircle className="w-3.5 h-3.5" />
+                )}
+                <span>Share</span>
+              </Button>
 
               <Button
                 size="sm"
@@ -507,6 +580,35 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
                       </p>
                     </div>
                   </DropdownMenuItem>
+
+                  {/* Option: Share to WhatsApp (Photo + Details, No Prices) */}
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareWhatsApp(e);
+                    }}
+                    disabled={isSharingWhatsApp}
+                    className="flex items-center gap-2.5 py-2 cursor-pointer rounded-xl hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40 border-t border-slate-100 dark:border-slate-800 mt-1 pt-2"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      {isSharingWhatsApp ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <MessageCircle className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span>Share to WhatsApp</span>
+                        <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                          Image + Specs
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Send photo & customer description
+                      </p>
+                    </div>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -583,22 +685,38 @@ export const ProductCard: React.FC<ProductCardProps> = React.memo(({
         </div>
 
         {/* Card Actions using shadcn Buttons */}
-        <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-0 grid grid-cols-2 gap-2">
+        <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-0 flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => onViewDetails(product)}
-            className="w-full text-xs font-semibold"
+            className="flex-1 text-xs font-semibold"
           >
             <Eye className="w-3.5 h-3.5 mr-1 text-slate-400" />
             <span>Details</span>
           </Button>
 
           <Button
+            variant="outline"
+            size="sm"
+            onClick={handleShareWhatsApp}
+            disabled={isSharingWhatsApp}
+            title="Share Product with Photo & Specs to WhatsApp"
+            className="px-2.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:border-emerald-300 transition-colors shadow-2xs"
+          >
+            {isSharingWhatsApp ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <MessageCircle className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline ml-1 font-medium">Share</span>
+          </Button>
+
+          <Button
             size="sm"
             onClick={() => onCreateOrder(product)}
             disabled={product.stockStatus === 'out_of_stock'}
-            className="w-full text-xs font-semibold"
+            className="flex-1 text-xs font-semibold"
           >
             <PlusCircle className="w-3.5 h-3.5 mr-1" />
             <span>Order</span>
